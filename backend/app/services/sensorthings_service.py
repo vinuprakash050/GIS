@@ -47,7 +47,11 @@ class SensorThingsService:
     def get_datastream_observations(self, datastream_id: int) -> list[ObservationResponse]:
         building_id = datastream_id // 10
         sensor_kind = "temperature" if datastream_id % 10 == 1 else "humidity"
-        return [self._build_observation(building_id, datastream_id, sensor_kind)]
+        # Generate 24 hourly observations for time-series data
+        return [
+            self._build_observation(building_id, datastream_id, sensor_kind, hours_ago=i)
+            for i in range(24)
+        ]
 
     def _build_datastream(self, building_id: int, sensor_kind: str) -> DatastreamResponse:
         datastream_id = building_id * 10 + (1 if sensor_kind == "temperature" else 2)
@@ -71,26 +75,28 @@ class SensorThingsService:
                 "name": f"{sensor_kind.title()} Datastream",
                 "description": f"Mock {sensor_kind} readings for building {building_id}.",
                 "unitOfMeasurement": unit,
-                "Observations": [self._build_observation(building_id, datastream_id, sensor_kind)],
+                "Observations": [],
             }
         )
 
     def _build_observation(
-        self, building_id: int, datastream_id: int, sensor_kind: str
+        self, building_id: int, datastream_id: int, sensor_kind: str, hours_ago: int = 0
     ) -> ObservationResponse:
-        base_time = datetime.now(timezone.utc) - timedelta(minutes=building_id % 11)
-        result = self._sensor_result(building_id, sensor_kind)
+        base_time = datetime.now(timezone.utc) - timedelta(hours=hours_ago, minutes=building_id % 11)
+        result = self._sensor_result(building_id, sensor_kind, hours_ago)
 
         return ObservationResponse(
             **{
-                "@iot.id": datastream_id * 100,
+                "@iot.id": datastream_id * 100 + hours_ago,
                 "phenomenonTime": base_time.isoformat().replace("+00:00", "Z"),
                 "result": result,
                 "Datastream": {"@iot.id": datastream_id},
             }
         )
 
-    def _sensor_result(self, building_id: int, sensor_kind: str) -> float:
+    def _sensor_result(self, building_id: int, sensor_kind: str, hours_ago: int = 0) -> float:
+        # Add some variation based on time to simulate realistic sensor data
+        time_variation = (hours_ago % 12) * 0.2 if sensor_kind == "temperature" else (hours_ago % 8) * 0.5
         if sensor_kind == "temperature":
-            return round(28 + (building_id % 7) * 1.5, 1)
-        return round(48 + (building_id % 5) * 4, 1)
+            return round(28 + (building_id % 7) * 1.5 + time_variation, 1)
+        return round(48 + (building_id % 5) * 4 + time_variation, 1)

@@ -1,6 +1,27 @@
 import React, { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 const osmRasterStyle = {
   version: 8,
@@ -24,16 +45,18 @@ const osmRasterStyle = {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export default function App() {
-  const [status, setStatus] = useState("Loading building data from the backend...");
+  const [status, setStatus] = useState("Loading map data...");
   const [selectedBuildingId, setSelectedBuildingId] = useState(null);
   const [buildingDetails, setBuildingDetails] = useState({});
   const [sensorData, setSensorData] = useState(null);
+  const [timeSeriesData, setTimeSeriesData] = useState(null);
   const [sensorStatus, setSensorStatus] = useState(
-    "Select a building to load SensorThings observations.",
+    "Select a building to view sensor readings.",
   );
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const selectedBuildingIdRef = useRef(null);
+  const hoveredBuildingIdRef = useRef(null);
 
   const selectedBuilding = selectedBuildingId ? buildingDetails[selectedBuildingId] : null;
 
@@ -44,28 +67,17 @@ export default function App() {
   useEffect(() => {
     if (!selectedBuildingId) {
       setSensorData(null);
-      setSensorStatus("Select a building to load SensorThings observations.");
+      setTimeSeriesData(null);
+      setSensorStatus("Select a building to view sensor readings.");
       return;
     }
 
     let ignore = false;
 
     const loadSensorData = async () => {
-      setSensorStatus("Loading SensorThings observations...");
+      setSensorStatus("Loading sensor data...");
 
       try {
-        const thingResponse = await fetch(`${apiBaseUrl}/v1.0/Things/${selectedBuildingId}`);
-
-        if (!thingResponse.ok) {
-          throw new Error(`Thing request failed with status ${thingResponse.status}`);
-        }
-
-        const thing = await thingResponse.json();
-
-        if (ignore) {
-          return;
-        }
-
         const datastreamsResponse = await fetch(
           `${apiBaseUrl}/v1.0/Things/${selectedBuildingId}/Datastreams`,
         );
@@ -89,6 +101,8 @@ export default function App() {
 
         let temperatureObs = null;
         let humidityObs = null;
+        let temperatureTimeSeries = [];
+        let humidityTimeSeries = [];
 
         if (temperatureStream) {
           const obsResponse = await fetch(
@@ -97,6 +111,7 @@ export default function App() {
           if (obsResponse.ok) {
             const observations = await obsResponse.json();
             temperatureObs = observations[0];
+            temperatureTimeSeries = observations;
           }
         }
 
@@ -107,6 +122,7 @@ export default function App() {
           if (obsResponse.ok) {
             const observations = await obsResponse.json();
             humidityObs = observations[0];
+            humidityTimeSeries = observations;
           }
         }
 
@@ -115,20 +131,26 @@ export default function App() {
         }
 
         setSensorData({
-          thingName: thing.name,
+          thingName: `Building ${selectedBuildingId}`,
           observedAt:
             temperatureObs?.phenomenonTime ?? humidityObs?.phenomenonTime ?? null,
           temperature: temperatureObs?.result ?? null,
           humidity: humidityObs?.result ?? null,
         });
-        setSensorStatus("SensorThings snapshot loaded.");
+
+        setTimeSeriesData({
+          temperature: temperatureTimeSeries,
+          humidity: humidityTimeSeries,
+        });
+        setSensorStatus("Sensor data loaded.");
       } catch (error) {
         if (ignore) {
           return;
         }
 
         setSensorData(null);
-        setSensorStatus(`Unable to load SensorThings data: ${error.message}`);
+        setTimeSeriesData(null);
+        setSensorStatus(`Could not load sensor data: ${error.message}`);
       }
     };
 
@@ -175,8 +197,9 @@ export default function App() {
               area: `${feature.properties.area.toLocaleString()} m²`,
               height: `${feature.properties.height} m`,
               volume: `${feature.properties.volume.toLocaleString()} m³`,
+              solar_potential: `${feature.properties.solar_potential.toLocaleString()} kWh/day`,
               description:
-                "Building attributes, volume, and geometry are now coming from PostgreSQL/PostGIS.",
+                "Building footprint data and environmental sensors.",
             },
           ]),
         );
@@ -200,6 +223,8 @@ export default function App() {
               "case",
               ["boolean", ["feature-state", "selected"], false],
               "#ff6b35",
+              ["boolean", ["feature-state", "hover"], false],
+              "#ffaa8a",
               "#6c757d",
             ],
             "fill-extrusion-height": ["get", "height"],
@@ -217,12 +242,16 @@ export default function App() {
               "case",
               ["boolean", ["feature-state", "selected"], false],
               "#ff6b35",
+              ["boolean", ["feature-state", "hover"], false],
+              "#ffaa8a",
               "#adb5bd",
             ],
             "fill-opacity": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
               0.5,
+              ["boolean", ["feature-state", "hover"], false],
+              0.4,
               0.3,
             ],
           },
@@ -258,20 +287,22 @@ export default function App() {
           const nextId = feature.properties?.id;
           const previousSelectedId = selectedBuildingIdRef.current;
 
-          if (previousSelectedId !== null) {
-            map.setFeatureState(
-              { source: "building", id: previousSelectedId },
-              { selected: false },
-            );
-          }
-
           if (nextId !== undefined) {
+            // Set new selection first to avoid visual gap
             map.setFeatureState({ source: "building", id: nextId }, { selected: true });
             const normalizedId = Number(nextId);
 
+            // Clear previous selection if different from new selection
+            if (previousSelectedId !== null && previousSelectedId !== normalizedId) {
+              map.setFeatureState(
+                { source: "building", id: previousSelectedId },
+                { selected: false },
+              );
+            }
+
             selectedBuildingIdRef.current = normalizedId;
             setSelectedBuildingId(normalizedId);
-            setStatus(`Selected ${feature.properties?.name ?? "building"} from the map.`);
+            setStatus(`Viewing ${feature.properties?.name ?? "building"}.`);
 
             const center = feature.geometry?.coordinates?.[0]?.[0];
             if (center) {
@@ -286,11 +317,26 @@ export default function App() {
           }
         });
 
-        map.on("mouseenter", "building-fill", () => {
+        map.on("mouseenter", "building-fill", (event) => {
+          const feature = event.features?.[0];
+          if (feature) {
+            const buildingId = feature.properties?.id;
+            // Clear previous hover state
+            if (hoveredBuildingIdRef.current !== null && hoveredBuildingIdRef.current !== buildingId) {
+              map.setFeatureState({ source: "building", id: hoveredBuildingIdRef.current }, { hover: false });
+            }
+            // Set new hover state
+            map.setFeatureState({ source: "building", id: buildingId }, { hover: true });
+            hoveredBuildingIdRef.current = buildingId;
+          }
           map.getCanvas().style.cursor = "pointer";
         });
 
-        map.on("mouseleave", "building-fill", () => {
+        map.on("mouseleave", "building-fill", (event) => {
+          if (hoveredBuildingIdRef.current !== null) {
+            map.setFeatureState({ source: "building", id: hoveredBuildingIdRef.current }, { hover: false });
+            hoveredBuildingIdRef.current = null;
+          }
           map.getCanvas().style.cursor = "";
         });
 
@@ -307,7 +353,7 @@ export default function App() {
           map.setFeatureState({ source: "building", id: currentSelectedId }, { selected: false });
           selectedBuildingIdRef.current = null;
           setSelectedBuildingId(null);
-          setStatus("Selection cleared. Click the building to see its details.");
+          setStatus("Click a building to view its details.");
 
           map.flyTo({
             pitch: 0,
@@ -328,10 +374,10 @@ export default function App() {
 
 
         setStatus(
-          `Loaded ${buildingData.features?.length ?? 0} building footprints from FastAPI. Click one to inspect details in 3D.`,
+          `Loaded ${buildingData.features?.length ?? 0} buildings. Click any building to view details.`,
         );
       } catch (error) {
-        setStatus(`Unable to load backend building data: ${error.message}`);
+        setStatus(`Could not load map data: ${error.message}`);
       }
     });
 
@@ -347,12 +393,11 @@ export default function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="title-group">
-          <p className="eyebrow">Milestone 8</p>
-          <h1>GIS MVP</h1>
+          <p className="eyebrow">North Usman Road</p>
+          <h1>Building Explorer</h1>
         </div>
         <p className="subtitle">
-          Building volume, 3D extrusion, and SensorThings-style observations are now part of the
-          workflow.
+          Explore building footprints, view 3D models, and monitor environmental sensor data.
         </p>
       </header>
 
@@ -381,6 +426,10 @@ export default function App() {
                   <dd>{selectedBuilding.volume}</dd>
                 </div>
                 <div>
+                  <dt>Solar Potential</dt>
+                  <dd>{selectedBuilding.solar_potential}</dd>
+                </div>
+                <div>
                   <dt>Temperature</dt>
                   <dd>{sensorData ? `${sensorData.temperature} °C` : "--"}</dd>
                 </div>
@@ -395,13 +444,68 @@ export default function App() {
                   : "No observation timestamp available yet."}
               </p>
               <p className="sensor-status">{sensorStatus}</p>
+              {timeSeriesData && (
+                <div className="sensor-chart">
+                  <h3>24-Hour Temperature Trend</h3>
+                  <Line
+                    data={{
+                      labels: timeSeriesData.temperature
+                        .slice()
+                        .reverse()
+                        .map((obs) => {
+                          const date = new Date(obs.phenomenonTime);
+                          return `${date.getHours()}:00`;
+                        }),
+                      datasets: [
+                        {
+                          label: "Temperature (°C)",
+                          data: timeSeriesData.temperature
+                            .slice()
+                            .reverse()
+                            .map((obs) => obs.result),
+                          borderColor: "rgba(255, 99, 132, 1)",
+                          backgroundColor: "rgba(255, 99, 132, 0.2)",
+                          tension: 0.1,
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          display: false,
+                        },
+                      },
+                      scales: {
+                        y: {
+                          beginAtZero: false,
+                          grid: {
+                            color: "rgba(255, 255, 255, 0.1)",
+                          },
+                          ticks: {
+                            color: "rgba(255, 255, 255, 0.7)",
+                          },
+                        },
+                        x: {
+                          grid: {
+                            color: "rgba(255, 255, 255, 0.1)",
+                          },
+                          ticks: {
+                            color: "rgba(255, 255, 255, 0.7)",
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </div>
+              )}
             </>
           ) : (
             <>
               <h2>No Building Selected</h2>
               <p className="panel-description">
-                Click one of the highlighted 3D footprints on the map to show building and sensor
-                details here.
+                Click any building on the map to view its details and sensor readings.
               </p>
               <p className="sensor-status">{sensorStatus}</p>
             </>

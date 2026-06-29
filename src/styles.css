@@ -176,6 +176,23 @@ body,
   line-height: 1.4;
 }
 
+.sensor-chart {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(180, 220, 255, 0.16);
+}
+
+.sensor-chart h3 {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #94c9ff;
+}
+
+.sensor-chart canvas {
+  max-height: 200px;
+}
+
 .map-status {
   margin: 0 0 12px;
   padding: 12px 14px;

@@ -7,6 +7,7 @@ class BuildingProperties(BaseModel):
     area: float
     height: float
     volume: float
+    solar_potential: float
 
 
 class BuildingGeometry(BaseModel):

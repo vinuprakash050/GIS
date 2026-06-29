@@ -12,4 +12,6 @@ class Building(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     area: Mapped[float] = mapped_column(Float, nullable=False)
     height: Mapped[float] = mapped_column(Float, nullable=False)
-    geometry: Mapped[object | None] = mapped_column(Geometry("POLYGON", srid=4326), nullable=True)
+    geometry: Mapped[object | None] = mapped_column(
+        Geometry("POLYGON", srid=4326, spatial_index=True), nullable=True
+    )
