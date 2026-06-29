@@ -44,6 +44,27 @@ const osmRasterStyle = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: false,
+    },
+  },
+  scales: {
+    y: {
+      beginAtZero: false,
+      grid: { color: "rgba(255, 255, 255, 0.1)" },
+      ticks: { color: "rgba(255, 255, 255, 0.7)" },
+    },
+    x: {
+      grid: { color: "rgba(255, 255, 255, 0.1)" },
+      ticks: { color: "rgba(255, 255, 255, 0.7)", maxTicksLimit: 8 },
+    },
+  },
+};
+
 export default function App() {
   const [status, setStatus] = useState("Loading map data...");
   const [selectedBuildingId, setSelectedBuildingId] = useState(null);
@@ -98,11 +119,15 @@ export default function App() {
         const humidityStream = datastreams.find((stream) =>
           stream.name?.toLowerCase().includes("humidity"),
         );
+        const vibrationStream = datastreams.find((stream) =>
+          stream.name?.toLowerCase().includes("vibration"),
+        );
 
         let temperatureObs = null;
         let humidityObs = null;
         let temperatureTimeSeries = [];
         let humidityTimeSeries = [];
+        let vibrationTimeSeries = [];
 
         if (temperatureStream) {
           const obsResponse = await fetch(
@@ -126,6 +151,16 @@ export default function App() {
           }
         }
 
+        if (vibrationStream) {
+          const obsResponse = await fetch(
+            `${apiBaseUrl}/v1.0/Datastreams/${vibrationStream["@iot.id"]}/Observations`,
+          );
+          if (obsResponse.ok) {
+            const observations = await obsResponse.json();
+            vibrationTimeSeries = observations;
+          }
+        }
+
         if (ignore) {
           return;
         }
@@ -136,11 +171,13 @@ export default function App() {
             temperatureObs?.phenomenonTime ?? humidityObs?.phenomenonTime ?? null,
           temperature: temperatureObs?.result ?? null,
           humidity: humidityObs?.result ?? null,
+          vibration: vibrationTimeSeries[0]?.result ?? null,
         });
 
         setTimeSeriesData({
           temperature: temperatureTimeSeries,
           humidity: humidityTimeSeries,
+          vibration: vibrationTimeSeries,
         });
         setSensorStatus("Sensor data loaded.");
       } catch (error) {
@@ -169,7 +206,7 @@ export default function App() {
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: osmRasterStyle,
-      center: [78.4867, 17.3852],
+      center: [80.2337, 13.0418],
       zoom: 17,
       pitch: 0,
       bearing: 0,
@@ -437,6 +474,10 @@ export default function App() {
                   <dt>Humidity</dt>
                   <dd>{sensorData ? `${sensorData.humidity} %` : "--"}</dd>
                 </div>
+                <div>
+                  <dt>Vibration</dt>
+                  <dd>{sensorData ? `${sensorData.vibration} mm/s` : "--"}</dd>
+                </div>
               </dl>
               <p className="sensor-observed-at">
                 {sensorData?.observedAt
@@ -445,60 +486,91 @@ export default function App() {
               </p>
               <p className="sensor-status">{sensorStatus}</p>
               {timeSeriesData && (
-                <div className="sensor-chart">
-                  <h3>24-Hour Temperature Trend</h3>
-                  <Line
-                    data={{
-                      labels: timeSeriesData.temperature
-                        .slice()
-                        .reverse()
-                        .map((obs) => {
-                          const date = new Date(obs.phenomenonTime);
-                          return `${date.getHours()}:00`;
-                        }),
-                      datasets: [
-                        {
-                          label: "Temperature (°C)",
-                          data: timeSeriesData.temperature
+                <>
+                  <div className="sensor-chart">
+                    <h3>24-Hour Temperature Trend</h3>
+                    <Line
+                      data={{
+                        labels: timeSeriesData.temperature
+                          .slice()
+                          .reverse()
+                          .map((obs) => {
+                            const date = new Date(obs.phenomenonTime);
+                            return `${date.getHours()}:00`;
+                          }),
+                        datasets: [
+                          {
+                            label: "Temperature (°C)",
+                            data: timeSeriesData.temperature
+                              .slice()
+                              .reverse()
+                              .map((obs) => obs.result),
+                            borderColor: "rgba(255, 99, 132, 1)",
+                            backgroundColor: "rgba(255, 99, 132, 0.2)",
+                            tension: 0.3,
+                          },
+                        ],
+                      }}
+                      options={chartOptions}
+                    />
+                  </div>
+                  <div className="sensor-chart">
+                    <h3>24-Hour Humidity Trend</h3>
+                    <Line
+                      data={{
+                        labels: timeSeriesData.humidity
+                          .slice()
+                          .reverse()
+                          .map((obs) => {
+                            const date = new Date(obs.phenomenonTime);
+                            return `${date.getHours()}:00`;
+                          }),
+                        datasets: [
+                          {
+                            label: "Humidity (%)",
+                            data: timeSeriesData.humidity
+                              .slice()
+                              .reverse()
+                              .map((obs) => obs.result),
+                            borderColor: "rgba(99, 179, 237, 1)",
+                            backgroundColor: "rgba(99, 179, 237, 0.2)",
+                            tension: 0.3,
+                          },
+                        ],
+                      }}
+                      options={chartOptions}
+                    />
+                  </div>
+                  {timeSeriesData.vibration?.length > 0 && (
+                    <div className="sensor-chart">
+                      <h3>24-Hour Structural Vibration</h3>
+                      <Line
+                        data={{
+                          labels: timeSeriesData.vibration
                             .slice()
                             .reverse()
-                            .map((obs) => obs.result),
-                          borderColor: "rgba(255, 99, 132, 1)",
-                          backgroundColor: "rgba(255, 99, 132, 0.2)",
-                          tension: 0.1,
-                        },
-                      ],
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: {
-                          display: false,
-                        },
-                      },
-                      scales: {
-                        y: {
-                          beginAtZero: false,
-                          grid: {
-                            color: "rgba(255, 255, 255, 0.1)",
-                          },
-                          ticks: {
-                            color: "rgba(255, 255, 255, 0.7)",
-                          },
-                        },
-                        x: {
-                          grid: {
-                            color: "rgba(255, 255, 255, 0.1)",
-                          },
-                          ticks: {
-                            color: "rgba(255, 255, 255, 0.7)",
-                          },
-                        },
-                      },
-                    }}
-                  />
-                </div>
+                            .map((obs) => {
+                              const date = new Date(obs.phenomenonTime);
+                              return `${date.getHours()}:00`;
+                            }),
+                          datasets: [
+                            {
+                              label: "Vibration (mm/s)",
+                              data: timeSeriesData.vibration
+                                .slice()
+                                .reverse()
+                                .map((obs) => obs.result),
+                              borderColor: "rgba(154, 230, 180, 1)",
+                              backgroundColor: "rgba(154, 230, 180, 0.2)",
+                              tension: 0.3,
+                            },
+                          ],
+                        }}
+                        options={chartOptions}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </>
           ) : (

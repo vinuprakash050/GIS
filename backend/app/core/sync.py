@@ -8,19 +8,19 @@ logger = logging.getLogger(__name__)
 
 
 SYNC_BUILDINGS_SQL = text(
-    """
+    r"""
     INSERT INTO buildings (id, name, area, height, geometry)
     SELECT
         fid AS id,
         COALESCE(NULLIF(name, ''), 'Building ' || fid) AS name,
-        ST_Area(geometry::geography) AS area,
+        ST_Area(geom::geography) AS area,
         COALESCE(
             CAST(substring("building:levels" FROM '^[0-9]+(\.[0-9]+)?') AS DOUBLE PRECISION) * 3.0,
             9.0
         ) AS height,
-        geometry
+        geom
     FROM raw_buildings
-    WHERE geometry IS NOT NULL
+    WHERE geom IS NOT NULL
     ON CONFLICT (id) DO UPDATE
     SET
         name = EXCLUDED.name,

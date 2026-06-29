@@ -31,10 +31,12 @@ class BuildingService:
 
     def _to_feature(self, building) -> BuildingFeature:
         geometry = json.loads(building.geometry_geojson)
-        # Solar potential: rooftop area (m²) × irradiance constant (kWh/m²/day)
-        # Using average solar irradiance for Hyderabad region: ~5.5 kWh/m²/day
-        solar_irradiance_constant = 5.5
-        solar_potential = round(building.area * solar_irradiance_constant, 2)
+        # Solar potential: Roof Area × Irradiance × Panel Efficiency
+        # Chennai average solar irradiance: 5.5 kWh/m²/day
+        # Standard panel efficiency: 20% (0.20)
+        solar_irradiance = 5.5  # kWh/m²/day for Chennai region
+        panel_efficiency = 0.20
+        solar_potential = round(building.area * solar_irradiance * panel_efficiency, 2)
 
         return BuildingFeature(
             id=building.id,

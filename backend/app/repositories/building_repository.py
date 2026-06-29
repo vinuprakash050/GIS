@@ -25,12 +25,11 @@ class BuildingRepository:
         Get buildings within a corridor around North Usman Road.
         Uses ST_DWithin for efficient spatial query with spatial index.
         """
-        # North Usman Road approximate center point (Hyderabad)
-        # This is a simplified corridor query - in production you'd use actual road geometry
-        corridor_center = "POINT(78.4867 17.3852)"
-        
+        # North Usman Road center point (T. Nagar, Chennai)
+        corridor_center = "POINT(80.2337 13.0418)"
+
         # Convert meters to degrees (approximate for this latitude)
-        # At 17.3852° latitude, 1 degree ≈ 111 km
+        # At 13.0418° latitude, 1 degree ≈ 111 km
         distance_degrees = corridor_distance_meters / 111000.0
         
         statement = (

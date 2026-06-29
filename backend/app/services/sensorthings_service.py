@@ -19,6 +19,7 @@ class SensorThingsService:
                     "Datastreams": [
                         self._build_datastream(building_id, "temperature"),
                         self._build_datastream(building_id, "humidity"),
+                        self._build_datastream(building_id, "vibration"),
                     ],
                 }
             )
@@ -34,6 +35,7 @@ class SensorThingsService:
                 "Datastreams": [
                     self._build_datastream(building_id, "temperature"),
                     self._build_datastream(building_id, "humidity"),
+                    self._build_datastream(building_id, "vibration"),
                 ],
             }
         )
@@ -42,11 +44,18 @@ class SensorThingsService:
         return [
             self._build_datastream(building_id, "temperature"),
             self._build_datastream(building_id, "humidity"),
+            self._build_datastream(building_id, "vibration"),
         ]
 
     def get_datastream_observations(self, datastream_id: int) -> list[ObservationResponse]:
         building_id = datastream_id // 10
-        sensor_kind = "temperature" if datastream_id % 10 == 1 else "humidity"
+        remainder = datastream_id % 10
+        if remainder == 1:
+            sensor_kind = "temperature"
+        elif remainder == 2:
+            sensor_kind = "humidity"
+        else:
+            sensor_kind = "vibration"
         # Generate 24 hourly observations for time-series data
         return [
             self._build_observation(building_id, datastream_id, sensor_kind, hours_ago=i)
@@ -54,20 +63,27 @@ class SensorThingsService:
         ]
 
     def _build_datastream(self, building_id: int, sensor_kind: str) -> DatastreamResponse:
-        datastream_id = building_id * 10 + (1 if sensor_kind == "temperature" else 2)
-        unit = (
-            UnitOfMeasurement(
+        if sensor_kind == "temperature":
+            datastream_id = building_id * 10 + 1
+            unit = UnitOfMeasurement(
                 name="Degree Celsius",
                 symbol="degC",
                 definition="https://qudt.org/vocab/unit/DEG_C",
             )
-            if sensor_kind == "temperature"
-            else UnitOfMeasurement(
+        elif sensor_kind == "humidity":
+            datastream_id = building_id * 10 + 2
+            unit = UnitOfMeasurement(
                 name="Percent Relative Humidity",
                 symbol="%",
                 definition="https://qudt.org/vocab/unit/PERCENT",
             )
-        )
+        else:  # vibration
+            datastream_id = building_id * 10 + 3
+            unit = UnitOfMeasurement(
+                name="Millimetre per Second",
+                symbol="mm/s",
+                definition="https://qudt.org/vocab/unit/MilliM-PER-SEC",
+            )
 
         return DatastreamResponse(
             **{
@@ -99,4 +115,9 @@ class SensorThingsService:
         time_variation = (hours_ago % 12) * 0.2 if sensor_kind == "temperature" else (hours_ago % 8) * 0.5
         if sensor_kind == "temperature":
             return round(28 + (building_id % 7) * 1.5 + time_variation, 1)
-        return round(48 + (building_id % 5) * 4 + time_variation, 1)
+        elif sensor_kind == "humidity":
+            return round(48 + (building_id % 5) * 4 + time_variation, 1)
+        else:  # vibration — micro-seismic, realistic mm/s range 0.1–2.0
+            vibration_base = 0.1 + (building_id % 5) * 0.15
+            vibration_variation = (hours_ago % 6) * 0.05
+            return round(vibration_base + vibration_variation, 3)
