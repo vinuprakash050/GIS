@@ -6,6 +6,7 @@ class BuildingProperties(BaseModel):
     name: str
     area: float
     height: float
+    volume: float
 
 
 class BuildingGeometry(BaseModel):

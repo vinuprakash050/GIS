@@ -65,4 +65,6 @@ uv run alembic upgrade head
 ## Endpoints
 
 - `GET /` returns a basic health message
-- `GET /buildings` returns GeoJSON with both attributes and geometry loaded from PostgreSQL/PostGIS
+- `GET /buildings` returns GeoJSON with area, height, volume, and geometry loaded from PostgreSQL/PostGIS
+- `GET /v1.0/Things/{building_id}` returns a minimal SensorThings-style building entity with datastreams and latest observations
+- `GET /v1.0/Datastreams/{datastream_id}/Observations` returns mocked latest observations for a datastream

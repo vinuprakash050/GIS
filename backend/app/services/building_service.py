@@ -32,6 +32,7 @@ class BuildingService:
                 name=building.name,
                 area=building.area,
                 height=building.height,
+                volume=round(building.area * building.height, 2),
             ),
             geometry=BuildingGeometry(
                 type=geometry["type"],

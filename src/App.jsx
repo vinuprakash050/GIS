@@ -27,6 +27,10 @@ export default function App() {
   const [status, setStatus] = useState("Loading building data from the backend...");
   const [selectedBuildingId, setSelectedBuildingId] = useState(null);
   const [buildingDetails, setBuildingDetails] = useState({});
+  const [sensorData, setSensorData] = useState(null);
+  const [sensorStatus, setSensorStatus] = useState(
+    "Select a building to load SensorThings observations.",
+  );
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const selectedBuildingIdRef = useRef(null);
@@ -35,6 +39,104 @@ export default function App() {
 
   useEffect(() => {
     selectedBuildingIdRef.current = selectedBuildingId;
+  }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (!selectedBuildingId) {
+      setSensorData(null);
+      setSensorStatus("Select a building to load SensorThings observations.");
+      return;
+    }
+
+    let ignore = false;
+
+    const loadSensorData = async () => {
+      setSensorStatus("Loading SensorThings observations...");
+
+      try {
+        const thingResponse = await fetch(`${apiBaseUrl}/v1.0/Things/${selectedBuildingId}`);
+
+        if (!thingResponse.ok) {
+          throw new Error(`Thing request failed with status ${thingResponse.status}`);
+        }
+
+        const thing = await thingResponse.json();
+
+        if (ignore) {
+          return;
+        }
+
+        const datastreamsResponse = await fetch(
+          `${apiBaseUrl}/v1.0/Things/${selectedBuildingId}/Datastreams`,
+        );
+
+        if (!datastreamsResponse.ok) {
+          throw new Error(`Datastreams request failed with status ${datastreamsResponse.status}`);
+        }
+
+        const datastreams = await datastreamsResponse.json();
+
+        if (ignore) {
+          return;
+        }
+
+        const temperatureStream = datastreams.find((stream) =>
+          stream.name?.toLowerCase().includes("temperature"),
+        );
+        const humidityStream = datastreams.find((stream) =>
+          stream.name?.toLowerCase().includes("humidity"),
+        );
+
+        let temperatureObs = null;
+        let humidityObs = null;
+
+        if (temperatureStream) {
+          const obsResponse = await fetch(
+            `${apiBaseUrl}/v1.0/Datastreams/${temperatureStream["@iot.id"]}/Observations`,
+          );
+          if (obsResponse.ok) {
+            const observations = await obsResponse.json();
+            temperatureObs = observations[0];
+          }
+        }
+
+        if (humidityStream) {
+          const obsResponse = await fetch(
+            `${apiBaseUrl}/v1.0/Datastreams/${humidityStream["@iot.id"]}/Observations`,
+          );
+          if (obsResponse.ok) {
+            const observations = await obsResponse.json();
+            humidityObs = observations[0];
+          }
+        }
+
+        if (ignore) {
+          return;
+        }
+
+        setSensorData({
+          thingName: thing.name,
+          observedAt:
+            temperatureObs?.phenomenonTime ?? humidityObs?.phenomenonTime ?? null,
+          temperature: temperatureObs?.result ?? null,
+          humidity: humidityObs?.result ?? null,
+        });
+        setSensorStatus("SensorThings snapshot loaded.");
+      } catch (error) {
+        if (ignore) {
+          return;
+        }
+
+        setSensorData(null);
+        setSensorStatus(`Unable to load SensorThings data: ${error.message}`);
+      }
+    };
+
+    loadSensorData();
+
+    return () => {
+      ignore = true;
+    };
   }, [selectedBuildingId]);
 
   useEffect(() => {
@@ -47,6 +149,9 @@ export default function App() {
       style: osmRasterStyle,
       center: [78.4867, 17.3852],
       zoom: 17,
+      pitch: 0,
+      bearing: 0,
+      antialias: true,
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
@@ -69,16 +174,38 @@ export default function App() {
               name: feature.properties.name,
               area: `${feature.properties.area.toLocaleString()} m²`,
               height: `${feature.properties.height} m`,
-              description: "Building attributes are now coming from PostgreSQL.",
+              volume: `${feature.properties.volume.toLocaleString()} m³`,
+              description:
+                "Building attributes, volume, and geometry are now coming from PostgreSQL/PostGIS.",
             },
           ]),
         );
+        const featureCoordinates = (buildingData.features ?? [])
+          .flatMap((feature) => feature.geometry?.coordinates ?? [])
+          .flatMap((ring) => ring ?? []);
 
         setBuildingDetails(detailsById);
 
         map.addSource("building", {
           type: "geojson",
           data: buildingData,
+        });
+
+        map.addLayer({
+          id: "building-extrusion",
+          type: "fill-extrusion",
+          source: "building",
+          paint: {
+            "fill-extrusion-color": [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              "#ff6b35",
+              "#6c757d",
+            ],
+            "fill-extrusion-height": ["get", "height"],
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": 0.9,
+          },
         });
 
         map.addLayer({
@@ -89,14 +216,14 @@ export default function App() {
             "fill-color": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              "#0b5fff",
-              "#1f7ae0",
+              "#ff6b35",
+              "#adb5bd",
             ],
             "fill-opacity": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              0.7,
-              0.45,
+              0.5,
+              0.3,
             ],
           },
         });
@@ -109,14 +236,14 @@ export default function App() {
             "line-color": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              "#08306b",
-              "#0d3b73",
+              "#e63946",
+              "#495057",
             ],
             "line-width": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              4,
-              3,
+              5,
+              2,
             ],
           },
         });
@@ -145,6 +272,17 @@ export default function App() {
             selectedBuildingIdRef.current = normalizedId;
             setSelectedBuildingId(normalizedId);
             setStatus(`Selected ${feature.properties?.name ?? "building"} from the map.`);
+
+            const center = feature.geometry?.coordinates?.[0]?.[0];
+            if (center) {
+              map.flyTo({
+                center: center,
+                zoom: 18,
+                pitch: 55,
+                bearing: -18,
+                duration: 1000,
+              });
+            }
           }
         });
 
@@ -170,20 +308,28 @@ export default function App() {
           selectedBuildingIdRef.current = null;
           setSelectedBuildingId(null);
           setStatus("Selection cleared. Click the building to see its details.");
+
+          map.flyTo({
+            pitch: 0,
+            bearing: 0,
+            zoom: 17,
+            duration: 800,
+          });
         });
 
-        const coordinates = buildingData.features?.[0]?.geometry?.coordinates?.[0];
-
-        if (coordinates?.length) {
-          const bounds = coordinates.reduce(
+        if (featureCoordinates.length > 0) {
+          const bounds = featureCoordinates.reduce(
             (currentBounds, coordinate) => currentBounds.extend(coordinate),
-            new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
+            new maplibregl.LngLatBounds(featureCoordinates[0], featureCoordinates[0]),
           );
 
           map.fitBounds(bounds, { padding: 110, duration: 0 });
         }
 
-        setStatus("Loaded 1 building footprint from FastAPI. Click it to inspect details.");
+
+        setStatus(
+          `Loaded ${buildingData.features?.length ?? 0} building footprints from FastAPI. Click one to inspect details in 3D.`,
+        );
       } catch (error) {
         setStatus(`Unable to load backend building data: ${error.message}`);
       }
@@ -201,12 +347,12 @@ export default function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="title-group">
-          <p className="eyebrow">Milestone 6</p>
+          <p className="eyebrow">Milestone 8</p>
           <h1>GIS MVP</h1>
         </div>
         <p className="subtitle">
-          Building attributes now come from PostgreSQL while geometry is still served as mocked
-          GeoJSON.
+          Building volume, 3D extrusion, and SensorThings-style observations are now part of the
+          workflow.
         </p>
       </header>
 
@@ -230,14 +376,34 @@ export default function App() {
                   <dt>Height</dt>
                   <dd>{selectedBuilding.height}</dd>
                 </div>
+                <div>
+                  <dt>Volume</dt>
+                  <dd>{selectedBuilding.volume}</dd>
+                </div>
+                <div>
+                  <dt>Temperature</dt>
+                  <dd>{sensorData ? `${sensorData.temperature} °C` : "--"}</dd>
+                </div>
+                <div>
+                  <dt>Humidity</dt>
+                  <dd>{sensorData ? `${sensorData.humidity} %` : "--"}</dd>
+                </div>
               </dl>
+              <p className="sensor-observed-at">
+                {sensorData?.observedAt
+                  ? `Observed at ${new Date(sensorData.observedAt).toLocaleString()}`
+                  : "No observation timestamp available yet."}
+              </p>
+              <p className="sensor-status">{sensorStatus}</p>
             </>
           ) : (
             <>
               <h2>No Building Selected</h2>
               <p className="panel-description">
-                Click the highlighted footprint on the map to show Building A details here.
+                Click one of the highlighted 3D footprints on the map to show building and sensor
+                details here.
               </p>
+              <p className="sensor-status">{sensorStatus}</p>
             </>
           )}
         </article>

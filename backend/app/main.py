@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.buildings import router as buildings_router
+from app.api.sensorthings import router as sensorthings_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.migrations import run_migrations
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(buildings_router, prefix=settings.api_prefix)
+app.include_router(sensorthings_router, prefix=settings.api_prefix)
 
 
 @app.get("/", tags=["health"])
