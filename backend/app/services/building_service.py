@@ -22,7 +22,7 @@ class BuildingService:
             features=[self._to_feature(building) for building in buildings]
         )
 
-    def get_buildings_in_corridor(self, db: Session, corridor_distance_meters: float = 750) -> BuildingFeatureCollection:
+    def get_buildings_in_corridor(self, db: Session, corridor_distance_meters: float = 300) -> BuildingFeatureCollection:
         buildings = self.repository.get_in_corridor(db, corridor_distance_meters)
 
         return BuildingFeatureCollection(

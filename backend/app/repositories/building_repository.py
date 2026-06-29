@@ -21,7 +21,7 @@ class BuildingRepository:
 
         return db.execute(statement).all()
 
-    def get_in_corridor(self, db: Session, corridor_distance_meters: float = 750):
+    def get_in_corridor(self, db: Session, corridor_distance_meters: float = 300):
         """
         Get buildings within a corridor around North Usman Road.
         Uses ST_DWithin with geography cast for accurate meter-based distance.

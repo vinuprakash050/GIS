@@ -71,6 +71,8 @@ export default function App() {
   const [buildingDetails, setBuildingDetails] = useState({});
   const [sensorData, setSensorData] = useState(null);
   const [timeSeriesData, setTimeSeriesData] = useState(null);
+  const [corridorDistance, setCorridorDistance] = useState(300);
+  const [debouncedCorridorDistance, setDebouncedCorridorDistance] = useState(300);
   const [sensorStatus, setSensorStatus] = useState(
     "Select a building to view sensor readings.",
   );
@@ -78,12 +80,70 @@ export default function App() {
   const mapRef = useRef(null);
   const selectedBuildingIdRef = useRef(null);
   const hoveredBuildingIdRef = useRef(null);
+  const corridorDistanceRef = useRef(300);
 
   const selectedBuilding = selectedBuildingId ? buildingDetails[selectedBuildingId] : null;
+  // True while user is still sliding (debounce hasn't fired yet)
+  const isSliding = corridorDistance !== debouncedCorridorDistance;
 
   useEffect(() => {
     selectedBuildingIdRef.current = selectedBuildingId;
   }, [selectedBuildingId]);
+
+  // Keep corridorDistanceRef in sync so map callbacks see latest value
+  useEffect(() => {
+    corridorDistanceRef.current = corridorDistance;
+  }, [corridorDistance]);
+
+  // Debounce removed — API fires only when user releases the slider (see onMouseUp/onTouchEnd)
+
+  // Reload buildings on the map when debounced corridor distance changes (after map is ready)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const reloadBuildings = async () => {
+      try {
+        setStatus(`Loading buildings within ${debouncedCorridorDistance}m corridor...`);
+        const response = await fetch(`${apiBaseUrl}/buildings/corridor?distance_meters=${debouncedCorridorDistance}`);
+        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+        const buildingData = await response.json();
+
+        const detailsById = Object.fromEntries(
+          (buildingData.features ?? []).map((feature) => [
+            Number(feature.id),
+            {
+              id: Number(feature.properties.id),
+              name: feature.properties.name,
+              area: `${feature.properties.area.toLocaleString()} m²`,
+              height: `${feature.properties.height} m`,
+              volume: `${feature.properties.volume.toLocaleString()} m³`,
+              solar_potential: `${feature.properties.solar_potential.toLocaleString()} kWh/day`,
+              description: "Building footprint data and environmental sensors.",
+            },
+          ]),
+        );
+        setBuildingDetails(detailsById);
+
+        // Clear selection when corridor changes
+        if (selectedBuildingIdRef.current !== null) {
+          map.setFeatureState({ source: "building", id: selectedBuildingIdRef.current }, { selected: false });
+          selectedBuildingIdRef.current = null;
+          setSelectedBuildingId(null);
+        }
+
+        if (map.getSource("building")) {
+          map.getSource("building").setData(buildingData);
+        }
+
+        setStatus(`Loaded ${buildingData.features?.length ?? 0} buildings within ${debouncedCorridorDistance}m corridor.`);
+      } catch (error) {
+        setStatus(`Could not reload corridor data: ${error.message}`);
+      }
+    };
+
+    reloadBuildings();
+  }, [debouncedCorridorDistance]);
 
   useEffect(() => {
     if (!selectedBuildingId) {
@@ -218,7 +278,7 @@ export default function App() {
 
     map.on("load", async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/buildings`);
+        const response = await fetch(`${apiBaseUrl}/buildings/corridor?distance_meters=${corridorDistanceRef.current}`);
 
         if (!response.ok) {
           throw new Error(`Request failed with status ${response.status}`);
@@ -390,7 +450,7 @@ export default function App() {
           map.setFeatureState({ source: "building", id: currentSelectedId }, { selected: false });
           selectedBuildingIdRef.current = null;
           setSelectedBuildingId(null);
-          setStatus("Click a building to view its details.");
+          setStatus("Click a building to view the building in 3D and its details.");
 
           map.flyTo({
             pitch: 0,
@@ -411,7 +471,7 @@ export default function App() {
 
 
         setStatus(
-          `Loaded ${buildingData.features?.length ?? 0} buildings. Click any building to view details.`,
+          `Loaded ${buildingData.features?.length ?? 0} buildings. Click any building to see 3D view and it's details.`,
         );
       } catch (error) {
         setStatus(`Could not load map data: ${error.message}`);
@@ -441,6 +501,29 @@ export default function App() {
       <section className="map-layout">
         <article className="details-panel">
           <p className="panel-label">Building Details</p>
+          <div className="corridor-control">
+            <label htmlFor="corridor-slider">
+              <span>Corridor Radius: <strong>{corridorDistance}m</strong></span>
+              <span className="corridor-pending" style={{ visibility: isSliding ? "visible" : "hidden" }}>
+                searching…
+              </span>
+            </label>
+            <input
+              id="corridor-slider"
+              type="range"
+              min={50}
+              max={750}
+              step={50}
+              value={corridorDistance}
+              onChange={(e) => setCorridorDistance(Number(e.target.value))}
+              onMouseUp={(e) => setDebouncedCorridorDistance(Number(e.target.value))}
+              onTouchEnd={(e) => setDebouncedCorridorDistance(Number(e.target.value))}
+            />
+            <div className="corridor-labels">
+              <span>50m</span>
+              <span>750m</span>
+            </div>
+          </div>
           {selectedBuilding ? (
             <>
               <h2>{selectedBuilding.name}</h2>
