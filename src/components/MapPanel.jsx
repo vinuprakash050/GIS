@@ -1,5 +1,5 @@
 import MapTooltip from "./MapTooltip";
-
+import React from "react";
 /**
  * Map container, status bar, 3D/top-view toggle button, and hover tooltip.
  */

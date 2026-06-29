@@ -1,5 +1,5 @@
 import SensorCharts from "./SensorCharts";
-
+import React from "react";
 /**
  * Left sidebar — corridor radius slider, building properties,
  * live sensor readings, and 24-hour trend charts.
