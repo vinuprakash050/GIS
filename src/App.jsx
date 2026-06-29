@@ -21,6 +21,8 @@ const osmRasterStyle = {
   ],
 };
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
 const buildingDetails = {
   1: {
     id: 1,
@@ -32,7 +34,7 @@ const buildingDetails = {
 };
 
 export default function App() {
-  const [status, setStatus] = useState("Loading building.geojson...");
+  const [status, setStatus] = useState("Loading building data from the backend...");
   const [selectedBuildingId, setSelectedBuildingId] = useState(null);
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -61,7 +63,7 @@ export default function App() {
 
     map.on("load", async () => {
       try {
-        const response = await fetch("/building.geojson");
+        const response = await fetch(`${apiBaseUrl}/buildings`);
 
         if (!response.ok) {
           throw new Error(`Request failed with status ${response.status}`);
@@ -176,9 +178,9 @@ export default function App() {
           map.fitBounds(bounds, { padding: 110, duration: 0 });
         }
 
-        setStatus("Loaded 1 building footprint. Click it to inspect details.");
+        setStatus("Loaded 1 building footprint from FastAPI. Click it to inspect details.");
       } catch (error) {
-        setStatus(`Unable to load building.geojson: ${error.message}`);
+        setStatus(`Unable to load backend building data: ${error.message}`);
       }
     });
 
@@ -194,11 +196,11 @@ export default function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="title-group">
-          <p className="eyebrow">Milestone 3</p>
+          <p className="eyebrow">Milestone 5</p>
           <h1>GIS MVP</h1>
         </div>
         <p className="subtitle">
-          Click the building footprint to inspect hardcoded details and confirm the interaction flow.
+          The map now fetches GeoJSON from FastAPI instead of reading a local file directly.
         </p>
       </header>
 

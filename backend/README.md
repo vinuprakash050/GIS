@@ -1,6 +1,6 @@
 # Backend Milestone 4
 
-This backend is intentionally minimal. It introduces FastAPI and one JSON endpoint without adding a database yet.
+This backend is intentionally minimal. It introduces FastAPI and serves mock building GeoJSON without adding a database yet.
 
 ## Run With uv
 
@@ -25,4 +25,4 @@ uv run uvicorn app.main:app --reload
 ## Endpoints
 
 - `GET /` returns a basic health message
-- `GET /buildings` returns mock building data as JSON
+- `GET /buildings` returns mock building data as GeoJSON

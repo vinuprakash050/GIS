@@ -1,12 +1,12 @@
 from fastapi import APIRouter
 
-from app.schemas.building import BuildingResponse
+from app.schemas.building import BuildingFeatureCollection
 from app.services.building_service import BuildingService
 
 router = APIRouter(prefix="/buildings", tags=["buildings"])
 building_service = BuildingService()
 
 
-@router.get("", response_model=list[BuildingResponse])
-def get_buildings() -> list[BuildingResponse]:
+@router.get("", response_model=BuildingFeatureCollection)
+def get_buildings() -> BuildingFeatureCollection:
     return building_service.get_all_buildings()
