@@ -1,0 +1,11 @@
+[project]
+name = "gis-mvp-backend"
+version = "0.1.0"
+description = "FastAPI backend for the GIS MVP milestone."
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.116.1",
+  "pydantic==2.11.7",
+  "uvicorn[standard]==0.35.0",
+]
+
