@@ -32,8 +32,12 @@ body {
 .app-header {
   display: flex;
   justify-content: space-between;
-  align-items: end;
-  gap: 16px;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.title-group {
+  min-width: 0;
 }
 
 .eyebrow {
@@ -53,9 +57,11 @@ body {
 
 .subtitle {
   margin: 0;
-  max-width: 32rem;
+  max-width: 28rem;
   color: #35506a;
-  font-size: 1rem;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  text-align: right;
 }
 
 .map-panel {
@@ -93,6 +99,10 @@ body {
   .app-header {
     align-items: start;
     flex-direction: column;
+  }
+
+  .subtitle {
+    text-align: left;
   }
 
   .map-container {

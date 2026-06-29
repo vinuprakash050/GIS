@@ -84,10 +84,10 @@ export default function App() {
             new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
           );
 
-          map.fitBounds(bounds, { padding: 80, duration: 0 });
+          map.fitBounds(bounds, { padding: 110, duration: 0 });
         }
 
-        setStatus("Loaded 1 building polygon from local GeoJSON.");
+        setStatus("Loaded 1 building footprint from local GeoJSON.");
       } catch (error) {
         setStatus(`Unable to load building.geojson: ${error.message}`);
       }
@@ -104,11 +104,14 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="app-header">
-        <div>
+        <div className="title-group">
           <p className="eyebrow">Milestone 2</p>
           <h1>GIS MVP</h1>
         </div>
-        <p className="subtitle">MapLibre rendering one building polygon from a local GeoJSON file with a fill and outline.</p>
+        <p className="subtitle">
+          MapLibre rendering one building footprint from a local GeoJSON file with a fill and
+          outline.
+        </p>
       </header>
       <section className="map-panel">
         <div className="map-status">{status}</div>
