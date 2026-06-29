@@ -73,6 +73,7 @@ export default function App() {
   const [timeSeriesData, setTimeSeriesData] = useState(null);
   const [corridorDistance, setCorridorDistance] = useState(300);
   const [debouncedCorridorDistance, setDebouncedCorridorDistance] = useState(300);
+  const [tooltip, setTooltip] = useState(null); // { x, y, building }
   const [sensorStatus, setSensorStatus] = useState(
     "Select a building to view sensor readings.",
   );
@@ -425,8 +426,40 @@ export default function App() {
             // Set new hover state
             map.setFeatureState({ source: "building", id: buildingId }, { hover: true });
             hoveredBuildingIdRef.current = buildingId;
+
+            // Show tooltip
+            const props = feature.properties;
+            setTooltip({
+              x: event.point.x,
+              y: event.point.y,
+              building: {
+                name: props.name ?? `Building ${props.id}`,
+                area: props.area != null ? `${Number(props.area).toLocaleString(undefined, { maximumFractionDigits: 0 })} m²` : "—",
+                height: props.height != null ? `${props.height} m` : "—",
+                volume: props.volume != null ? `${Number(props.volume).toLocaleString(undefined, { maximumFractionDigits: 0 })} m³` : "—",
+                solar: props.solar_potential != null ? `${Number(props.solar_potential).toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh/day` : "—",
+              },
+            });
           }
           map.getCanvas().style.cursor = "pointer";
+        });
+
+        map.on("mousemove", "building-fill", (event) => {
+          const feature = event.features?.[0];
+          if (feature) {
+            const props = feature.properties;
+            setTooltip({
+              x: event.point.x,
+              y: event.point.y,
+              building: {
+                name: props.name ?? `Building ${props.id}`,
+                area: props.area != null ? `${Number(props.area).toLocaleString(undefined, { maximumFractionDigits: 0 })} m²` : "—",
+                height: props.height != null ? `${props.height} m` : "—",
+                volume: props.volume != null ? `${Number(props.volume).toLocaleString(undefined, { maximumFractionDigits: 0 })} m³` : "—",
+                solar: props.solar_potential != null ? `${Number(props.solar_potential).toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh/day` : "—",
+              },
+            });
+          }
         });
 
         map.on("mouseleave", "building-fill", (event) => {
@@ -435,6 +468,7 @@ export default function App() {
             hoveredBuildingIdRef.current = null;
           }
           map.getCanvas().style.cursor = "";
+          setTooltip(null);
         });
 
         map.on("click", (event) => {
@@ -670,6 +704,27 @@ export default function App() {
         <section className="map-panel">
           <div className="map-status">{status}</div>
           <div ref={mapContainerRef} className="map-container" />
+          {tooltip && (
+            <div
+              className="map-tooltip"
+              style={{
+                left: tooltip.x + 16,
+                top: tooltip.y - 10,
+              }}
+            >
+              <p className="map-tooltip-name">{tooltip.building.name}</p>
+              <div className="map-tooltip-grid">
+                <span className="map-tooltip-label">Area</span>
+                <span className="map-tooltip-value">{tooltip.building.area}</span>
+                <span className="map-tooltip-label">Height</span>
+                <span className="map-tooltip-value">{tooltip.building.height}</span>
+                <span className="map-tooltip-label">Volume</span>
+                <span className="map-tooltip-value">{tooltip.building.volume}</span>
+                <span className="map-tooltip-label">Solar</span>
+                <span className="map-tooltip-value">{tooltip.building.solar}</span>
+              </div>
+            </div>
+          )}
         </section>
       </section>
     </main>

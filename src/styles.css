@@ -74,6 +74,7 @@ body,
   backdrop-filter: blur(12px);
   box-shadow: 0 24px 60px rgba(29, 54, 82, 0.14);
   overflow: hidden;
+  position: relative;
 }
 
 .map-layout {
@@ -254,6 +255,58 @@ body,
   color: #184b86;
   font-size: 0.95rem;
   font-weight: 600;
+}
+
+.map-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  background: linear-gradient(135deg, rgba(9, 34, 64, 0.97), rgba(17, 67, 123, 0.95));
+  border: 1px solid rgba(148, 201, 255, 0.25);
+  border-radius: 14px;
+  padding: 12px 14px;
+  min-width: 180px;
+  max-width: 220px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(148, 201, 255, 0.1);
+  backdrop-filter: blur(8px);
+  animation: tooltip-in 0.15s ease;
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.map-tooltip-name {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #e8f4ff;
+  line-height: 1.3;
+  border-bottom: 1px solid rgba(148, 201, 255, 0.15);
+  padding-bottom: 8px;
+}
+
+.map-tooltip-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+.map-tooltip-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94c9ff;
+}
+
+.map-tooltip-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e8f4ff;
+  text-align: right;
 }
 
 .map-container {
