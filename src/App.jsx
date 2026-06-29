@@ -207,7 +207,7 @@ export default function App() {
       container: mapContainerRef.current,
       style: osmRasterStyle,
       center: [80.2341, 13.0526],
-      zoom: 15,
+      zoom: 16,
       pitch: 0,
       bearing: 0,
       antialias: true,
@@ -395,18 +395,18 @@ export default function App() {
           map.flyTo({
             pitch: 0,
             bearing: 0,
-            zoom: 17,
+            zoom: 16,
             duration: 800,
           });
         });
 
         if (featureCoordinates.length > 0) {
-          const bounds = featureCoordinates.reduce(
-            (currentBounds, coordinate) => currentBounds.extend(coordinate),
-            new maplibregl.LngLatBounds(featureCoordinates[0], featureCoordinates[0]),
-          );
-
-          map.fitBounds(bounds, { padding: 110, duration: 0 });
+          // Don't fitBounds — data is pre-centered on North Usman Road.
+          // Just jump to the fixed center at street level.
+          map.jumpTo({
+            center: [80.2341, 13.0526],
+            zoom: 16,
+          });
         }
 
 
