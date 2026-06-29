@@ -74,6 +74,7 @@ export default function App() {
   const [corridorDistance, setCorridorDistance] = useState(300);
   const [debouncedCorridorDistance, setDebouncedCorridorDistance] = useState(300);
   const [tooltip, setTooltip] = useState(null); // { x, y, building }
+  const [is3D, setIs3D] = useState(false);
   const [sensorStatus, setSensorStatus] = useState(
     "Select a building to view sensor readings.",
   );
@@ -82,6 +83,7 @@ export default function App() {
   const selectedBuildingIdRef = useRef(null);
   const hoveredBuildingIdRef = useRef(null);
   const corridorDistanceRef = useRef(300);
+  const is3DRef = useRef(false);
 
   const selectedBuilding = selectedBuildingId ? buildingDetails[selectedBuildingId] : null;
   // True while user is still sliding (debounce hasn't fired yet)
@@ -95,6 +97,23 @@ export default function App() {
   useEffect(() => {
     corridorDistanceRef.current = corridorDistance;
   }, [corridorDistance]);
+
+  // Keep is3DRef in sync so map callbacks see latest value
+  useEffect(() => {
+    is3DRef.current = is3D;
+  }, [is3D]);
+
+  const handleToggle3D = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const next = !is3DRef.current;
+    setIs3D(next);
+    if (next) {
+      map.easeTo({ pitch: 55, bearing: -18, zoom: 17, duration: 700 });
+    } else {
+      map.easeTo({ pitch: 0, bearing: 0, zoom: 17, duration: 700 });
+    }
+  };
 
   // Debounce removed — API fires only when user releases the slider (see onMouseUp/onTouchEnd)
 
@@ -268,7 +287,7 @@ export default function App() {
       container: mapContainerRef.current,
       style: osmRasterStyle,
       center: [80.2341, 13.0526],
-      zoom: 16,
+      zoom: 17,
       pitch: 0,
       bearing: 0,
       antialias: true,
@@ -375,6 +394,18 @@ export default function App() {
           },
         });
 
+        // Terrain mesh — raster DEM tiles for 3D ground surface.
+        // Chennai / North Usman Road is largely flat so visual impact is subtle,
+        // but this satisfies the "3D terrain mesh" requirement and works alongside
+        // the fill-extrusion layer without any changes to building rendering.
+        map.addSource("terrain-dem", {
+          type: "raster-dem",
+          tiles: ["https://demotiles.maplibre.org/terrain-tiles/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          maxzoom: 11,
+        });
+        map.setTerrain({ source: "terrain-dem", exaggeration: 1.5 });
+
         map.on("click", "building-fill", (event) => {
           const feature = event.features?.[0];
 
@@ -400,6 +431,8 @@ export default function App() {
 
             selectedBuildingIdRef.current = normalizedId;
             setSelectedBuildingId(normalizedId);
+            setIs3D(true);
+            is3DRef.current = true;
             setStatus(`Viewing ${feature.properties?.name ?? "building"}.`);
 
             const center = feature.geometry?.coordinates?.[0]?.[0];
@@ -484,12 +517,14 @@ export default function App() {
           map.setFeatureState({ source: "building", id: currentSelectedId }, { selected: false });
           selectedBuildingIdRef.current = null;
           setSelectedBuildingId(null);
+          setIs3D(false);
+          is3DRef.current = false;
           setStatus("Click a building to view the building in 3D and its details.");
 
           map.flyTo({
             pitch: 0,
             bearing: 0,
-            zoom: 16,
+            zoom: 17,
             duration: 800,
           });
         });
@@ -702,7 +737,16 @@ export default function App() {
         </article>
 
         <section className="map-panel">
-          <div className="map-status">{status}</div>
+          <div className="map-panel-header">
+            <div className="map-status">{status}</div>
+            <button
+              className={`view-toggle-btn${is3D ? " active" : ""}`}
+              onClick={handleToggle3D}
+              title={is3D ? "Switch to top-down view" : "Switch to 3D view"}
+            >
+              {is3D ? "⊞ Top View" : "⬡ 3D View"}
+            </button>
+          </div>
           <div ref={mapContainerRef} className="map-container" />
           {tooltip && (
             <div

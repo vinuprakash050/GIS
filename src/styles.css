@@ -77,6 +77,18 @@ body,
   position: relative;
 }
 
+.map-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.map-panel-header .map-status {
+  flex: 1;
+  margin: 0;
+}
+
 .map-layout {
   flex: 1;
   display: flex;
@@ -248,13 +260,38 @@ body,
 }
 
 .map-status {
-  margin: 0 0 12px;
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(31, 122, 224, 0.1);
   color: #184b86;
   font-size: 0.95rem;
   font-weight: 600;
+}
+
+.view-toggle-btn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(31, 122, 224, 0.25);
+  background: rgba(31, 122, 224, 0.08);
+  color: #184b86;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+  letter-spacing: 0.03em;
+}
+
+.view-toggle-btn:hover {
+  background: rgba(31, 122, 224, 0.16);
+  border-color: rgba(31, 122, 224, 0.5);
+}
+
+.view-toggle-btn.active {
+  background: rgba(31, 122, 224, 0.18);
+  border-color: #1f7ae0;
+  color: #0f4f99;
 }
 
 .map-tooltip {
