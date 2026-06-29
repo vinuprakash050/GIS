@@ -12,7 +12,10 @@ class BuildingProperties(BaseModel):
 
 class BuildingGeometry(BaseModel):
     type: str
-    coordinates: list[list[list[float]]]
+    # GeoJSON coordinate nesting varies by geometry type (Polygon vs MultiPolygon, etc.)
+    # Keep this permissive to avoid 500s from validation errors.
+    coordinates: list | dict
+
 
 
 class BuildingFeature(BaseModel):
