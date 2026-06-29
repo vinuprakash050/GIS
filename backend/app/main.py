@@ -5,12 +5,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.buildings import router as buildings_router
 from app.core.config import settings
-from app.core.database import init_database
+from app.core.database import engine
+from app.core.migrations import run_migrations
+from app.core.sync import sync_buildings_from_raw
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
+
+run_migrations()
+sync_buildings_from_raw(engine)
 
 app = FastAPI(
     title=settings.app_name,
@@ -27,8 +32,6 @@ app.add_middleware(
 )
 
 app.include_router(buildings_router, prefix=settings.api_prefix)
-
-init_database()
 
 
 @app.get("/", tags=["health"])

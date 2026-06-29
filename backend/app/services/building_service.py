@@ -1,6 +1,7 @@
+import json
+
 from sqlalchemy.orm import Session
 
-from app.models.building import Building
 from app.repositories.building_repository import BuildingRepository
 from app.schemas.building import (
     BuildingFeature,
@@ -21,7 +22,9 @@ class BuildingService:
             features=[self._to_feature(building) for building in buildings]
         )
 
-    def _to_feature(self, building: Building) -> BuildingFeature:
+    def _to_feature(self, building) -> BuildingFeature:
+        geometry = json.loads(building.geometry_geojson)
+
         return BuildingFeature(
             id=building.id,
             properties=BuildingProperties(
@@ -31,15 +34,7 @@ class BuildingService:
                 height=building.height,
             ),
             geometry=BuildingGeometry(
-                type="Polygon",
-                coordinates=[
-                    [
-                        [78.48634, 17.38533],
-                        [78.48670, 17.38533],
-                        [78.48670, 17.38508],
-                        [78.48634, 17.38508],
-                        [78.48634, 17.38533],
-                    ]
-                ],
+                type=geometry["type"],
+                coordinates=geometry["coordinates"],
             ),
         )

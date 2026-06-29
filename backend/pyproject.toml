@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "FastAPI backend for the GIS MVP milestone."
 requires-python = ">=3.10"
 dependencies = [
+  "alembic==1.16.4",
   "fastapi==0.116.1",
+  "geoalchemy2==0.17.1",
   "pydantic==2.11.7",
   "psycopg[binary]==3.2.9",
   "sqlalchemy==2.0.41",
