@@ -68,6 +68,16 @@ body {
   box-shadow: 0 24px 60px rgba(29, 54, 82, 0.14);
 }
 
+.map-status {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(31, 122, 224, 0.1);
+  color: #184b86;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .map-container {
   width: 100%;
   height: min(78vh, 900px);
