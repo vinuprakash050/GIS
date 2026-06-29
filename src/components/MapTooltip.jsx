@@ -1,3 +1,4 @@
+import React from "react";
 /**
  * Hover tooltip that follows the cursor over buildings on the map.
  * Rendered absolutely inside the map panel.
