@@ -206,8 +206,8 @@ export default function App() {
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: osmRasterStyle,
-      center: [80.2337, 13.0418],
-      zoom: 17,
+      center: [80.2341, 13.0526],
+      zoom: 15,
       pitch: 0,
       bearing: 0,
       antialias: true,
