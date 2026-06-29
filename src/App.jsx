@@ -1,83 +1,24 @@
-import React, { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
-import { Line } from "react-chartjs-2";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
-
-const osmRasterStyle = {
-  version: 8,
-  sources: {
-    "osm-raster-tiles": {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
-    },
-  },
-  layers: [
-    {
-      id: "osm-raster-layer",
-      type: "raster",
-      source: "osm-raster-tiles",
-    },
-  ],
-};
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
-
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      display: false,
-    },
-  },
-  scales: {
-    y: {
-      beginAtZero: false,
-      grid: { color: "rgba(255, 255, 255, 0.1)" },
-      ticks: { color: "rgba(255, 255, 255, 0.7)" },
-    },
-    x: {
-      grid: { color: "rgba(255, 255, 255, 0.1)" },
-      ticks: { color: "rgba(255, 255, 255, 0.7)", maxTicksLimit: 8 },
-    },
-  },
-};
+import { MAP_ZOOM } from "./config/map";
+import { useMapInit } from "./hooks/useMapInit";
+import { useBuildings } from "./hooks/useBuildings";
+import { useSensorData } from "./hooks/useSensorData";
+import DetailsPanel from "./components/DetailsPanel";
+import MapPanel from "./components/MapPanel";
 
 export default function App() {
+  // ── UI state ────────────────────────────────────────────────────────────────
   const [status, setStatus] = useState("Loading map data...");
   const [selectedBuildingId, setSelectedBuildingId] = useState(null);
   const [buildingDetails, setBuildingDetails] = useState({});
-  const [sensorData, setSensorData] = useState(null);
-  const [timeSeriesData, setTimeSeriesData] = useState(null);
   const [corridorDistance, setCorridorDistance] = useState(300);
   const [debouncedCorridorDistance, setDebouncedCorridorDistance] = useState(300);
-  const [tooltip, setTooltip] = useState(null); // { x, y, building }
+  const [tooltip, setTooltip] = useState(null);
   const [is3D, setIs3D] = useState(false);
-  const [sensorStatus, setSensorStatus] = useState(
-    "Select a building to view sensor readings.",
-  );
+
+  // ── Refs shared with map callbacks ──────────────────────────────────────────
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const selectedBuildingIdRef = useRef(null);
@@ -85,476 +26,56 @@ export default function App() {
   const corridorDistanceRef = useRef(300);
   const is3DRef = useRef(false);
 
+  // Keep refs in sync with state
+  useEffect(() => { selectedBuildingIdRef.current = selectedBuildingId; }, [selectedBuildingId]);
+  useEffect(() => { corridorDistanceRef.current = corridorDistance; },     [corridorDistance]);
+  useEffect(() => { is3DRef.current = is3D; },                             [is3D]);
+
+  // ── Derived state ───────────────────────────────────────────────────────────
   const selectedBuilding = selectedBuildingId ? buildingDetails[selectedBuildingId] : null;
-  // True while user is still sliding (debounce hasn't fired yet)
   const isSliding = corridorDistance !== debouncedCorridorDistance;
 
-  useEffect(() => {
-    selectedBuildingIdRef.current = selectedBuildingId;
-  }, [selectedBuildingId]);
+  // ── Hooks ───────────────────────────────────────────────────────────────────
+  useMapInit({
+    mapContainerRef,
+    mapRef,
+    corridorDistanceRef,
+    selectedBuildingIdRef,
+    hoveredBuildingIdRef,
+    is3DRef,
+    setBuildingDetails,
+    setSelectedBuildingId,
+    setIs3D,
+    setStatus,
+    setTooltip,
+  });
 
-  // Keep corridorDistanceRef in sync so map callbacks see latest value
-  useEffect(() => {
-    corridorDistanceRef.current = corridorDistance;
-  }, [corridorDistance]);
+  useBuildings({
+    mapRef,
+    debouncedCorridorDistance,
+    selectedBuildingIdRef,
+    setSelectedBuildingId,
+    setBuildingDetails,
+    setStatus,
+  });
 
-  // Keep is3DRef in sync so map callbacks see latest value
-  useEffect(() => {
-    is3DRef.current = is3D;
-  }, [is3D]);
+  const { sensorData, timeSeriesData, sensorStatus } = useSensorData(selectedBuildingId);
 
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleToggle3D = () => {
     const map = mapRef.current;
     if (!map) return;
     const next = !is3DRef.current;
     setIs3D(next);
-    if (next) {
-      map.easeTo({ pitch: 55, bearing: -18, zoom: 17, duration: 700 });
-    } else {
-      map.easeTo({ pitch: 0, bearing: 0, zoom: 17, duration: 700 });
-    }
+    is3DRef.current = next;
+    map.easeTo(
+      next
+        ? { pitch: 55, bearing: -18, zoom: MAP_ZOOM, duration: 700 }
+        : { pitch: 0,  bearing: 0,   zoom: MAP_ZOOM, duration: 700 },
+    );
   };
 
-  // Debounce removed — API fires only when user releases the slider (see onMouseUp/onTouchEnd)
-
-  // Reload buildings on the map when debounced corridor distance changes (after map is ready)
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const reloadBuildings = async () => {
-      try {
-        setStatus(`Loading buildings within ${debouncedCorridorDistance}m corridor...`);
-        const response = await fetch(`${apiBaseUrl}/buildings/corridor?distance_meters=${debouncedCorridorDistance}`);
-        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-        const buildingData = await response.json();
-
-        const detailsById = Object.fromEntries(
-          (buildingData.features ?? []).map((feature) => [
-            Number(feature.id),
-            {
-              id: Number(feature.properties.id),
-              name: feature.properties.name,
-              area: `${feature.properties.area.toLocaleString()} m²`,
-              height: `${feature.properties.height} m`,
-              volume: `${feature.properties.volume.toLocaleString()} m³`,
-              solar_potential: `${feature.properties.solar_potential.toLocaleString()} kWh/day`,
-              description: "Building footprint data and environmental sensors.",
-            },
-          ]),
-        );
-        setBuildingDetails(detailsById);
-
-        // Clear selection when corridor changes
-        if (selectedBuildingIdRef.current !== null) {
-          map.setFeatureState({ source: "building", id: selectedBuildingIdRef.current }, { selected: false });
-          selectedBuildingIdRef.current = null;
-          setSelectedBuildingId(null);
-        }
-
-        if (map.getSource("building")) {
-          map.getSource("building").setData(buildingData);
-        }
-
-        setStatus(`Loaded ${buildingData.features?.length ?? 0} buildings within ${debouncedCorridorDistance}m corridor.`);
-      } catch (error) {
-        setStatus(`Could not reload corridor data: ${error.message}`);
-      }
-    };
-
-    reloadBuildings();
-  }, [debouncedCorridorDistance]);
-
-  useEffect(() => {
-    if (!selectedBuildingId) {
-      setSensorData(null);
-      setTimeSeriesData(null);
-      setSensorStatus("Select a building to view sensor readings.");
-      return;
-    }
-
-    let ignore = false;
-
-    const loadSensorData = async () => {
-      setSensorStatus("Loading sensor data...");
-
-      try {
-        const datastreamsResponse = await fetch(
-          `${apiBaseUrl}/v1.0/Things/${selectedBuildingId}/Datastreams`,
-        );
-
-        if (!datastreamsResponse.ok) {
-          throw new Error(`Datastreams request failed with status ${datastreamsResponse.status}`);
-        }
-
-        const datastreams = await datastreamsResponse.json();
-
-        if (ignore) {
-          return;
-        }
-
-        const temperatureStream = datastreams.find((stream) =>
-          stream.name?.toLowerCase().includes("temperature"),
-        );
-        const humidityStream = datastreams.find((stream) =>
-          stream.name?.toLowerCase().includes("humidity"),
-        );
-        const vibrationStream = datastreams.find((stream) =>
-          stream.name?.toLowerCase().includes("vibration"),
-        );
-
-        let temperatureObs = null;
-        let humidityObs = null;
-        let temperatureTimeSeries = [];
-        let humidityTimeSeries = [];
-        let vibrationTimeSeries = [];
-
-        if (temperatureStream) {
-          const obsResponse = await fetch(
-            `${apiBaseUrl}/v1.0/Datastreams/${temperatureStream["@iot.id"]}/Observations`,
-          );
-          if (obsResponse.ok) {
-            const observations = await obsResponse.json();
-            temperatureObs = observations[0];
-            temperatureTimeSeries = observations;
-          }
-        }
-
-        if (humidityStream) {
-          const obsResponse = await fetch(
-            `${apiBaseUrl}/v1.0/Datastreams/${humidityStream["@iot.id"]}/Observations`,
-          );
-          if (obsResponse.ok) {
-            const observations = await obsResponse.json();
-            humidityObs = observations[0];
-            humidityTimeSeries = observations;
-          }
-        }
-
-        if (vibrationStream) {
-          const obsResponse = await fetch(
-            `${apiBaseUrl}/v1.0/Datastreams/${vibrationStream["@iot.id"]}/Observations`,
-          );
-          if (obsResponse.ok) {
-            const observations = await obsResponse.json();
-            vibrationTimeSeries = observations;
-          }
-        }
-
-        if (ignore) {
-          return;
-        }
-
-        setSensorData({
-          thingName: `Building ${selectedBuildingId}`,
-          observedAt:
-            temperatureObs?.phenomenonTime ?? humidityObs?.phenomenonTime ?? null,
-          temperature: temperatureObs?.result ?? null,
-          humidity: humidityObs?.result ?? null,
-          vibration: vibrationTimeSeries[0]?.result ?? null,
-        });
-
-        setTimeSeriesData({
-          temperature: temperatureTimeSeries,
-          humidity: humidityTimeSeries,
-          vibration: vibrationTimeSeries,
-        });
-        setSensorStatus("Sensor data loaded.");
-      } catch (error) {
-        if (ignore) {
-          return;
-        }
-
-        setSensorData(null);
-        setTimeSeriesData(null);
-        setSensorStatus(`Could not load sensor data: ${error.message}`);
-      }
-    };
-
-    loadSensorData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [selectedBuildingId]);
-
-  useEffect(() => {
-    if (mapRef.current || !mapContainerRef.current) {
-      return undefined;
-    }
-
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: osmRasterStyle,
-      center: [80.2341, 13.0526],
-      zoom: 17,
-      pitch: 0,
-      bearing: 0,
-      antialias: true,
-    });
-
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-    map.addControl(new maplibregl.FullscreenControl(), "top-right");
-
-    map.on("load", async () => {
-      try {
-        const response = await fetch(`${apiBaseUrl}/buildings/corridor?distance_meters=${corridorDistanceRef.current}`);
-
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`);
-        }
-
-        const buildingData = await response.json();
-        const detailsById = Object.fromEntries(
-          (buildingData.features ?? []).map((feature) => [
-            Number(feature.id),
-            {
-              id: Number(feature.properties.id),
-              name: feature.properties.name,
-              area: `${feature.properties.area.toLocaleString()} m²`,
-              height: `${feature.properties.height} m`,
-              volume: `${feature.properties.volume.toLocaleString()} m³`,
-              solar_potential: `${feature.properties.solar_potential.toLocaleString()} kWh/day`,
-              description:
-                "Building footprint data and environmental sensors.",
-            },
-          ]),
-        );
-        const featureCoordinates = (buildingData.features ?? [])
-          .flatMap((feature) => feature.geometry?.coordinates ?? [])
-          .flatMap((ring) => ring ?? []);
-
-        setBuildingDetails(detailsById);
-
-        map.addSource("building", {
-          type: "geojson",
-          data: buildingData,
-        });
-
-        map.addLayer({
-          id: "building-extrusion",
-          type: "fill-extrusion",
-          source: "building",
-          paint: {
-            "fill-extrusion-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              "#ff6b35",
-              ["boolean", ["feature-state", "hover"], false],
-              "#ffaa8a",
-              "#6c757d",
-            ],
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": 0.9,
-          },
-        });
-
-        map.addLayer({
-          id: "building-fill",
-          type: "fill",
-          source: "building",
-          paint: {
-            "fill-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              "#ff6b35",
-              ["boolean", ["feature-state", "hover"], false],
-              "#ffaa8a",
-              "#adb5bd",
-            ],
-            "fill-opacity": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              0.5,
-              ["boolean", ["feature-state", "hover"], false],
-              0.4,
-              0.3,
-            ],
-          },
-        });
-
-        map.addLayer({
-          id: "building-outline",
-          type: "line",
-          source: "building",
-          paint: {
-            "line-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              "#e63946",
-              "#495057",
-            ],
-            "line-width": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              5,
-              2,
-            ],
-          },
-        });
-
-        // Terrain mesh — raster DEM tiles for 3D ground surface.
-        // Chennai / North Usman Road is largely flat so visual impact is subtle,
-        // but this satisfies the "3D terrain mesh" requirement and works alongside
-        // the fill-extrusion layer without any changes to building rendering.
-        map.addSource("terrain-dem", {
-          type: "raster-dem",
-          tiles: ["https://demotiles.maplibre.org/terrain-tiles/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          maxzoom: 11,
-        });
-        map.setTerrain({ source: "terrain-dem", exaggeration: 1.5 });
-
-        map.on("click", "building-fill", (event) => {
-          const feature = event.features?.[0];
-
-          if (!feature) {
-            return;
-          }
-
-          const nextId = feature.properties?.id;
-          const previousSelectedId = selectedBuildingIdRef.current;
-
-          if (nextId !== undefined) {
-            // Set new selection first to avoid visual gap
-            map.setFeatureState({ source: "building", id: nextId }, { selected: true });
-            const normalizedId = Number(nextId);
-
-            // Clear previous selection if different from new selection
-            if (previousSelectedId !== null && previousSelectedId !== normalizedId) {
-              map.setFeatureState(
-                { source: "building", id: previousSelectedId },
-                { selected: false },
-              );
-            }
-
-            selectedBuildingIdRef.current = normalizedId;
-            setSelectedBuildingId(normalizedId);
-            setIs3D(true);
-            is3DRef.current = true;
-            setStatus(`Viewing ${feature.properties?.name ?? "building"}.`);
-
-            const center = feature.geometry?.coordinates?.[0]?.[0];
-            if (center) {
-              map.flyTo({
-                center: center,
-                zoom: 18,
-                pitch: 55,
-                bearing: -18,
-                duration: 1000,
-              });
-            }
-          }
-        });
-
-        map.on("mouseenter", "building-fill", (event) => {
-          const feature = event.features?.[0];
-          if (feature) {
-            const buildingId = feature.properties?.id;
-            // Clear previous hover state
-            if (hoveredBuildingIdRef.current !== null && hoveredBuildingIdRef.current !== buildingId) {
-              map.setFeatureState({ source: "building", id: hoveredBuildingIdRef.current }, { hover: false });
-            }
-            // Set new hover state
-            map.setFeatureState({ source: "building", id: buildingId }, { hover: true });
-            hoveredBuildingIdRef.current = buildingId;
-
-            // Show tooltip
-            const props = feature.properties;
-            setTooltip({
-              x: event.point.x,
-              y: event.point.y,
-              building: {
-                name: props.name ?? `Building ${props.id}`,
-                area: props.area != null ? `${Number(props.area).toLocaleString(undefined, { maximumFractionDigits: 0 })} m²` : "—",
-                height: props.height != null ? `${props.height} m` : "—",
-                volume: props.volume != null ? `${Number(props.volume).toLocaleString(undefined, { maximumFractionDigits: 0 })} m³` : "—",
-                solar: props.solar_potential != null ? `${Number(props.solar_potential).toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh/day` : "—",
-              },
-            });
-          }
-          map.getCanvas().style.cursor = "pointer";
-        });
-
-        map.on("mousemove", "building-fill", (event) => {
-          const feature = event.features?.[0];
-          if (feature) {
-            const props = feature.properties;
-            setTooltip({
-              x: event.point.x,
-              y: event.point.y,
-              building: {
-                name: props.name ?? `Building ${props.id}`,
-                area: props.area != null ? `${Number(props.area).toLocaleString(undefined, { maximumFractionDigits: 0 })} m²` : "—",
-                height: props.height != null ? `${props.height} m` : "—",
-                volume: props.volume != null ? `${Number(props.volume).toLocaleString(undefined, { maximumFractionDigits: 0 })} m³` : "—",
-                solar: props.solar_potential != null ? `${Number(props.solar_potential).toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh/day` : "—",
-              },
-            });
-          }
-        });
-
-        map.on("mouseleave", "building-fill", (event) => {
-          if (hoveredBuildingIdRef.current !== null) {
-            map.setFeatureState({ source: "building", id: hoveredBuildingIdRef.current }, { hover: false });
-            hoveredBuildingIdRef.current = null;
-          }
-          map.getCanvas().style.cursor = "";
-          setTooltip(null);
-        });
-
-        map.on("click", (event) => {
-          const clickedFeatures = map.queryRenderedFeatures(event.point, {
-            layers: ["building-fill"],
-          });
-          const currentSelectedId = selectedBuildingIdRef.current;
-
-          if (clickedFeatures.length > 0 || currentSelectedId === null) {
-            return;
-          }
-
-          map.setFeatureState({ source: "building", id: currentSelectedId }, { selected: false });
-          selectedBuildingIdRef.current = null;
-          setSelectedBuildingId(null);
-          setIs3D(false);
-          is3DRef.current = false;
-          setStatus("Click a building to view the building in 3D and its details.");
-
-          map.flyTo({
-            pitch: 0,
-            bearing: 0,
-            zoom: 17,
-            duration: 800,
-          });
-        });
-
-        if (featureCoordinates.length > 0) {
-          // Don't fitBounds — data is pre-centered on North Usman Road.
-          // Just jump to the fixed center at street level.
-          map.jumpTo({
-            center: [80.2341, 13.0526],
-            zoom: 16,
-          });
-        }
-
-
-        setStatus(
-          `Loaded ${buildingData.features?.length ?? 0} buildings. Click any building to see 3D view and it's details.`,
-        );
-      } catch (error) {
-        setStatus(`Could not load map data: ${error.message}`);
-      }
-    });
-
-    mapRef.current = map;
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -568,208 +89,24 @@ export default function App() {
       </header>
 
       <section className="map-layout">
-        <article className="details-panel">
-          <p className="panel-label">Building Details</p>
-          <div className="corridor-control">
-            <label htmlFor="corridor-slider">
-              <span>Corridor Radius: <strong>{corridorDistance}m</strong></span>
-              <span className="corridor-pending" style={{ visibility: isSliding ? "visible" : "hidden" }}>
-                searching…
-              </span>
-            </label>
-            <input
-              id="corridor-slider"
-              type="range"
-              min={50}
-              max={750}
-              step={50}
-              value={corridorDistance}
-              onChange={(e) => setCorridorDistance(Number(e.target.value))}
-              onMouseUp={(e) => setDebouncedCorridorDistance(Number(e.target.value))}
-              onTouchEnd={(e) => setDebouncedCorridorDistance(Number(e.target.value))}
-            />
-            <div className="corridor-labels">
-              <span>50m</span>
-              <span>750m</span>
-            </div>
-          </div>
-          {selectedBuilding ? (
-            <>
-              <h2>{selectedBuilding.name}</h2>
-              <p className="panel-description">{selectedBuilding.description}</p>
-              <dl className="details-grid">
-                <div>
-                  <dt>ID</dt>
-                  <dd>{selectedBuilding.id}</dd>
-                </div>
-                <div>
-                  <dt>Area</dt>
-                  <dd>{selectedBuilding.area}</dd>
-                </div>
-                <div>
-                  <dt>Height</dt>
-                  <dd>{selectedBuilding.height}</dd>
-                </div>
-                <div>
-                  <dt>Volume</dt>
-                  <dd>{selectedBuilding.volume}</dd>
-                </div>
-                <div>
-                  <dt>Solar Potential</dt>
-                  <dd>{selectedBuilding.solar_potential}</dd>
-                </div>
-                <div>
-                  <dt>Temperature</dt>
-                  <dd>{sensorData ? `${sensorData.temperature} °C` : "--"}</dd>
-                </div>
-                <div>
-                  <dt>Humidity</dt>
-                  <dd>{sensorData ? `${sensorData.humidity} %` : "--"}</dd>
-                </div>
-                <div>
-                  <dt>Vibration</dt>
-                  <dd>{sensorData ? `${sensorData.vibration} mm/s` : "--"}</dd>
-                </div>
-              </dl>
-              <p className="sensor-observed-at">
-                {sensorData?.observedAt
-                  ? `Observed at ${new Date(sensorData.observedAt).toLocaleString()}`
-                  : "No observation timestamp available yet."}
-              </p>
-              <p className="sensor-status">{sensorStatus}</p>
-              {timeSeriesData && (
-                <>
-                  <div className="sensor-chart">
-                    <h3>24-Hour Temperature Trend</h3>
-                    <Line
-                      data={{
-                        labels: timeSeriesData.temperature
-                          .slice()
-                          .reverse()
-                          .map((obs) => {
-                            const date = new Date(obs.phenomenonTime);
-                            return `${date.getHours()}:00`;
-                          }),
-                        datasets: [
-                          {
-                            label: "Temperature (°C)",
-                            data: timeSeriesData.temperature
-                              .slice()
-                              .reverse()
-                              .map((obs) => obs.result),
-                            borderColor: "rgba(255, 99, 132, 1)",
-                            backgroundColor: "rgba(255, 99, 132, 0.2)",
-                            tension: 0.3,
-                          },
-                        ],
-                      }}
-                      options={chartOptions}
-                    />
-                  </div>
-                  <div className="sensor-chart">
-                    <h3>24-Hour Humidity Trend</h3>
-                    <Line
-                      data={{
-                        labels: timeSeriesData.humidity
-                          .slice()
-                          .reverse()
-                          .map((obs) => {
-                            const date = new Date(obs.phenomenonTime);
-                            return `${date.getHours()}:00`;
-                          }),
-                        datasets: [
-                          {
-                            label: "Humidity (%)",
-                            data: timeSeriesData.humidity
-                              .slice()
-                              .reverse()
-                              .map((obs) => obs.result),
-                            borderColor: "rgba(99, 179, 237, 1)",
-                            backgroundColor: "rgba(99, 179, 237, 0.2)",
-                            tension: 0.3,
-                          },
-                        ],
-                      }}
-                      options={chartOptions}
-                    />
-                  </div>
-                  {timeSeriesData.vibration?.length > 0 && (
-                    <div className="sensor-chart">
-                      <h3>24-Hour Structural Vibration</h3>
-                      <Line
-                        data={{
-                          labels: timeSeriesData.vibration
-                            .slice()
-                            .reverse()
-                            .map((obs) => {
-                              const date = new Date(obs.phenomenonTime);
-                              return `${date.getHours()}:00`;
-                            }),
-                          datasets: [
-                            {
-                              label: "Vibration (mm/s)",
-                              data: timeSeriesData.vibration
-                                .slice()
-                                .reverse()
-                                .map((obs) => obs.result),
-                              borderColor: "rgba(154, 230, 180, 1)",
-                              backgroundColor: "rgba(154, 230, 180, 0.2)",
-                              tension: 0.3,
-                            },
-                          ],
-                        }}
-                        options={chartOptions}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <h2>No Building Selected</h2>
-              <p className="panel-description">
-                Click any building on the map to view its details and sensor readings.
-              </p>
-              <p className="sensor-status">{sensorStatus}</p>
-            </>
-          )}
-        </article>
+        <DetailsPanel
+          corridorDistance={corridorDistance}
+          isSliding={isSliding}
+          onCorridorChange={setCorridorDistance}
+          onCorridorCommit={setDebouncedCorridorDistance}
+          selectedBuilding={selectedBuilding}
+          sensorData={sensorData}
+          sensorStatus={sensorStatus}
+          timeSeriesData={timeSeriesData}
+        />
 
-        <section className="map-panel">
-          <div className="map-panel-header">
-            <div className="map-status">{status}</div>
-            <button
-              className={`view-toggle-btn${is3D ? " active" : ""}`}
-              onClick={handleToggle3D}
-              title={is3D ? "Switch to top-down view" : "Switch to 3D view"}
-            >
-              {is3D ? "⊞ Top View" : "⬡ 3D View"}
-            </button>
-          </div>
-          <div ref={mapContainerRef} className="map-container" />
-          {tooltip && (
-            <div
-              className="map-tooltip"
-              style={{
-                left: tooltip.x + 16,
-                top: tooltip.y - 10,
-              }}
-            >
-              <p className="map-tooltip-name">{tooltip.building.name}</p>
-              <div className="map-tooltip-grid">
-                <span className="map-tooltip-label">Area</span>
-                <span className="map-tooltip-value">{tooltip.building.area}</span>
-                <span className="map-tooltip-label">Height</span>
-                <span className="map-tooltip-value">{tooltip.building.height}</span>
-                <span className="map-tooltip-label">Volume</span>
-                <span className="map-tooltip-value">{tooltip.building.volume}</span>
-                <span className="map-tooltip-label">Solar</span>
-                <span className="map-tooltip-value">{tooltip.building.solar}</span>
-              </div>
-            </div>
-          )}
-        </section>
+        <MapPanel
+          mapContainerRef={mapContainerRef}
+          status={status}
+          is3D={is3D}
+          onToggle3D={handleToggle3D}
+          tooltip={tooltip}
+        />
       </section>
     </main>
   );
