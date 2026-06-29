@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.buildings import router as buildings_router
 from app.core.config import settings
+from app.core.database import init_database
 
 app = FastAPI(
     title=settings.app_name,
@@ -19,6 +20,8 @@ app.add_middleware(
 )
 
 app.include_router(buildings_router, prefix=settings.api_prefix)
+
+init_database()
 
 
 @app.get("/", tags=["health"])

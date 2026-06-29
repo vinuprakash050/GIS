@@ -23,19 +23,10 @@ const osmRasterStyle = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
-const buildingDetails = {
-  1: {
-    id: 1,
-    name: "Engineering Block",
-    area: "2,450 m²",
-    height: "12 m",
-    description: "Academic building used as the first interactive demo target.",
-  },
-};
-
 export default function App() {
   const [status, setStatus] = useState("Loading building data from the backend...");
   const [selectedBuildingId, setSelectedBuildingId] = useState(null);
+  const [buildingDetails, setBuildingDetails] = useState({});
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const selectedBuildingIdRef = useRef(null);
@@ -70,6 +61,20 @@ export default function App() {
         }
 
         const buildingData = await response.json();
+        const detailsById = Object.fromEntries(
+          (buildingData.features ?? []).map((feature) => [
+            Number(feature.id),
+            {
+              id: Number(feature.properties.id),
+              name: feature.properties.name,
+              area: `${feature.properties.area.toLocaleString()} m²`,
+              height: `${feature.properties.height} m`,
+              description: "Building attributes are now coming from PostgreSQL.",
+            },
+          ]),
+        );
+
+        setBuildingDetails(detailsById);
 
         map.addSource("building", {
           type: "geojson",
@@ -196,11 +201,12 @@ export default function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="title-group">
-          <p className="eyebrow">Milestone 5</p>
+          <p className="eyebrow">Milestone 6</p>
           <h1>GIS MVP</h1>
         </div>
         <p className="subtitle">
-          The map now fetches GeoJSON from FastAPI instead of reading a local file directly.
+          Building attributes now come from PostgreSQL while geometry is still served as mocked
+          GeoJSON.
         </p>
       </header>
 

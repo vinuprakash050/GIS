@@ -4,6 +4,8 @@ from pydantic import BaseModel
 class BuildingProperties(BaseModel):
     id: int
     name: str
+    area: float
+    height: float
 
 
 class BuildingGeometry(BaseModel):
