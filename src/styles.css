@@ -74,6 +74,69 @@ body {
   box-shadow: 0 24px 60px rgba(29, 54, 82, 0.14);
 }
 
+.map-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.details-panel {
+  padding: 24px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(9, 34, 64, 0.96), rgba(17, 67, 123, 0.92));
+  color: #f4f9ff;
+  box-shadow: 0 24px 60px rgba(16, 42, 74, 0.24);
+}
+
+.panel-label {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94c9ff;
+}
+
+.details-panel h2 {
+  margin: 0;
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+
+.panel-description {
+  margin: 14px 0 0;
+  color: rgba(234, 244, 255, 0.82);
+  line-height: 1.55;
+}
+
+.details-grid {
+  margin: 24px 0 0;
+  display: grid;
+  gap: 14px;
+}
+
+.details-grid div {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(180, 220, 255, 0.16);
+}
+
+.details-grid dt {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9dd1ff;
+}
+
+.details-grid dd {
+  margin: 8px 0 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
 .map-status {
   margin: 0 0 12px;
   padding: 12px 14px;
@@ -103,6 +166,10 @@ body {
 
   .subtitle {
     text-align: left;
+  }
+
+  .map-layout {
+    grid-template-columns: 1fr;
   }
 
   .map-container {
