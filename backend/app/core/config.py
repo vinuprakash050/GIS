@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -45,55 +46,65 @@ class Settings(BaseModel):
     app_name: str = "GIS MVP API"
     api_prefix: str = ""
     cors_origins: list[str] = []
-    database_host: str = os.getenv("DATABASE_HOST", "127.0.0.1")
-    database_port: int = int(os.getenv("DATABASE_PORT", "5432"))
-    database_name: str = os.getenv("DATABASE_NAME", "postgres")
-    database_user: str = os.getenv("DATABASE_USER", "postgres")
-    database_password: str = os.getenv("DATABASE_PASSWORD", "password")
 
     @property
     def gpkg_path(self) -> str:
         raw_path = os.getenv("GPKG_PATH", "")
         if not raw_path:
             return str(Path(__file__).resolve().parents[3] / "northusman1.gpkg")
+
         path = Path(raw_path)
         if path.is_absolute():
             return str(path)
+
         return str(Path(__file__).resolve().parents[3] / path)
 
     def model_post_init(self, __context) -> None:
-        # Populate cors_origins after model init so env is read at runtime
         if not self.cors_origins:
             self.cors_origins = _parse_cors_origins()
 
     @property
     def database_url(self) -> str:
-        # DATABASE_URL can be set directly (e.g. Neon full connection string)
-        direct_url = os.getenv("GIS_DATABASE_URL", "")
-        if direct_url:
-            # Replace scheme with psycopg-compatible one
-            direct_url = direct_url.replace("postgresql://", "postgresql+psycopg://", 1)
-            direct_url = direct_url.replace("postgres://", "postgresql+psycopg://", 1)
-            # Strip channel_binding param — not supported by SQLAlchemy URL parser
-            # psycopg3 handles SSL natively via sslmode=require
-            if "channel_binding=" in direct_url:
-                import re
-                direct_url = re.sub(r"[&?]channel_binding=[^&]*", "", direct_url)
-                direct_url = re.sub(r"\?&", "?", direct_url)
-                direct_url = direct_url.rstrip("?")
-            return direct_url
-        return (
-            f"postgresql+psycopg://{self.database_user}:{self.database_password}"
-            f"@{self.database_host}:{self.database_port}/{self.database_name}"
+        database_url = os.getenv("DATABASE_URL")
+
+        if not database_url:
+            raise ValueError(
+                "DATABASE_URL environment variable is not set"
+            )
+
+        # Convert to SQLAlchemy psycopg dialect
+        database_url = database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg://",
+            1,
         )
+        database_url = database_url.replace(
+            "postgres://",
+            "postgresql+psycopg://",
+            1,
+        )
+
+        # Remove channel_binding because SQLAlchemy URL parsing
+        # doesn't support it. psycopg3 still honors sslmode=require.
+        database_url = re.sub(
+            r"[&?]channel_binding=[^&]*",
+            "",
+            database_url,
+        )
+        database_url = re.sub(r"\?&", "?", database_url)
+        database_url = database_url.rstrip("?")
+
+        return database_url
 
     @property
     def database_url_safe(self) -> str:
-        return make_url(self.database_url).render_as_string(hide_password=True)
+        return make_url(self.database_url).render_as_string(
+            hide_password=True
+        )
 
     @property
     def database_source(self) -> str:
-        return "GIS_DATABASE_URL" if os.getenv("GIS_DATABASE_URL", "") else "DATABASE_*"
+        return "DATABASE_URL"
 
 
 settings = Settings()
