@@ -1,6 +1,7 @@
 import os
 import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel
 from sqlalchemy.engine import make_url
@@ -32,7 +33,6 @@ _load_env_files()
 
 
 def _parse_cors_origins() -> list[str]:
-    """Read CORS origins from env var or fall back to localhost dev defaults."""
     raw = os.getenv("CORS_ORIGINS", "")
     if raw:
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
@@ -64,15 +64,44 @@ class Settings(BaseModel):
             self.cors_origins = _parse_cors_origins()
 
     @property
+    def _parsed_database_url(self):
+        database_url = os.getenv("DATABASE_URL", "")
+        if not database_url:
+            raise ValueError("GIS_DATABASE_URL environment variable is not set")
+        return urlparse(database_url)
+
+    @property
+    def database_host(self) -> str:
+        return self._parsed_database_url.hostname or ""
+
+    @property
+    def database_port(self) -> int:
+        return self._parsed_database_url.port or 5432
+
+    @property
+    def database_name(self) -> str:
+        return self._parsed_database_url.path.lstrip("/")
+
+    @property
+    def database_user(self) -> str:
+        return self._parsed_database_url.username or ""
+
+    @property
+    def database_password(self) -> str:
+        return self._parsed_database_url.password or ""
+
+    @property
+    def database_sslmode(self) -> str:
+        query = parse_qs(self._parsed_database_url.query)
+        return query.get("sslmode", ["require"])[0]
+
+    @property
     def database_url(self) -> str:
-        database_url = os.getenv("DATABASE_URL")
+        database_url = os.getenv("DATABASE_URL", "")
 
         if not database_url:
-            raise ValueError(
-                "DATABASE_URL environment variable is not set"
-            )
+            raise ValueError("GIS_DATABASE_URL environment variable is not set")
 
-        # Convert to SQLAlchemy psycopg dialect
         database_url = database_url.replace(
             "postgresql://",
             "postgresql+psycopg://",
@@ -84,8 +113,6 @@ class Settings(BaseModel):
             1,
         )
 
-        # Remove channel_binding because SQLAlchemy URL parsing
-        # doesn't support it. psycopg3 still honors sslmode=require.
         database_url = re.sub(
             r"[&?]channel_binding=[^&]*",
             "",
@@ -104,7 +131,7 @@ class Settings(BaseModel):
 
     @property
     def database_source(self) -> str:
-        return "DATABASE_URL"
+        return "GIS_DATABASE_URL"
 
 
 settings = Settings()
