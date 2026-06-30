@@ -35,7 +35,7 @@ export default function DetailsPanel({
           id="corridor-slider"
           type="range"
           min={50}
-          max={750}
+          max={1500}
           step={50}
           value={corridorDistance}
           onChange={(e) => onCorridorChange(Number(e.target.value))}
@@ -44,7 +44,7 @@ export default function DetailsPanel({
         />
         <div className="corridor-labels">
           <span>50m</span>
-          <span>750m</span>
+          <span>1500m</span>
         </div>
       </div>
 
