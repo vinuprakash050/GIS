@@ -17,6 +17,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    print("Alembic env: configuring offline migrations", flush=True)
     context.configure(
         url=settings.database_url,
         target_metadata=target_metadata,
@@ -25,21 +26,28 @@ def run_migrations_offline() -> None:
     )
 
     with context.begin_transaction():
+        print("Alembic env: running offline migrations", flush=True)
         context.run_migrations()
+        print("Alembic env: offline migrations finished", flush=True)
 
 
 def run_migrations_online() -> None:
+    print("Alembic env: creating online engine", flush=True)
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
+    print("Alembic env: opening migration connection", flush=True)
     with connectable.connect() as connection:
+        print("Alembic env: configuring migration context", flush=True)
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
+            print("Alembic env: running online migrations", flush=True)
             context.run_migrations()
+            print("Alembic env: online migrations finished", flush=True)
 
 
 if context.is_offline_mode():

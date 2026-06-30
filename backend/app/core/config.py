@@ -1,6 +1,33 @@
 import os
+from pathlib import Path
 
 from pydantic import BaseModel
+from sqlalchemy.engine import make_url
+
+
+def _load_env_files() -> None:
+    """Load backend/.env first, then repo .env without overwriting real env vars."""
+    env_paths = [
+        Path(__file__).resolve().parents[2] / ".env",
+        Path(__file__).resolve().parents[3] / ".env",
+    ]
+
+    for env_path in env_paths:
+        if not env_path.exists():
+            continue
+
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            os.environ.setdefault(key, value)
+
+
+_load_env_files()
 
 
 def _parse_cors_origins() -> list[str]:
@@ -24,6 +51,16 @@ class Settings(BaseModel):
     database_user: str = os.getenv("DATABASE_USER", "postgres")
     database_password: str = os.getenv("DATABASE_PASSWORD", "password")
 
+    @property
+    def gpkg_path(self) -> str:
+        raw_path = os.getenv("GPKG_PATH", "")
+        if not raw_path:
+            return str(Path(__file__).resolve().parents[3] / "northusman1.gpkg")
+        path = Path(raw_path)
+        if path.is_absolute():
+            return str(path)
+        return str(Path(__file__).resolve().parents[3] / path)
+
     def model_post_init(self, __context) -> None:
         # Populate cors_origins after model init so env is read at runtime
         if not self.cors_origins:
@@ -32,7 +69,7 @@ class Settings(BaseModel):
     @property
     def database_url(self) -> str:
         # DATABASE_URL can be set directly (e.g. Neon full connection string)
-        direct_url = os.getenv("DATABASE_URL", "")
+        direct_url = os.getenv("GIS_DATABASE_URL", "")
         if direct_url:
             # Replace scheme with psycopg-compatible one
             direct_url = direct_url.replace("postgresql://", "postgresql+psycopg://", 1)
@@ -49,6 +86,14 @@ class Settings(BaseModel):
             f"postgresql+psycopg://{self.database_user}:{self.database_password}"
             f"@{self.database_host}:{self.database_port}/{self.database_name}"
         )
+
+    @property
+    def database_url_safe(self) -> str:
+        return make_url(self.database_url).render_as_string(hide_password=True)
+
+    @property
+    def database_source(self) -> str:
+        return "GIS_DATABASE_URL" if os.getenv("GIS_DATABASE_URL", "") else "DATABASE_*"
 
 
 settings = Settings()

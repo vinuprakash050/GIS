@@ -14,9 +14,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    print(f"Migration {revision}: ensuring postgis extension", flush=True)
     op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
 
     # Upgrade geometry column only if still Polygon
+    print(f"Migration {revision}: normalizing buildings.geometry type", flush=True)
     op.execute(
         """
         DO $$
@@ -37,6 +39,7 @@ def upgrade() -> None:
         """
     )
 
+    print(f"Migration {revision}: creating _get_geometry_column()", flush=True)
     op.execute(
         """
         CREATE OR REPLACE FUNCTION _get_geometry_column(table_name text)
@@ -63,6 +66,7 @@ def upgrade() -> None:
         """
     )
 
+    print(f"Migration {revision}: creating sync_buildings_from_raw()", flush=True)
     op.execute(
         """
         CREATE OR REPLACE FUNCTION sync_buildings_from_raw()
@@ -139,11 +143,9 @@ def upgrade() -> None:
         $$;
         """
     )
-
-    op.execute("SELECT sync_buildings_from_raw()")
-
+    print(f"Migration {revision}: completed", flush=True)
 
 def downgrade() -> None:
-    
+    print(f"Migration {revision} downgrade: dropping sync helpers", flush=True)
     op.execute("DROP FUNCTION IF EXISTS sync_buildings_from_raw()")
     op.execute("DROP FUNCTION IF EXISTS _get_geometry_column(text)")
