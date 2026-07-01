@@ -1,0 +1,27 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/satellite/*", "/assets/*", "*.png", "*.js", "*.css", "*.ico"]
+  },
+  "mimeTypes": {
+    ".png": "image/png",
+    ".gpkg": "application/octet-stream"
+  },
+  "globalHeaders": {
+    "Cache-Control": "no-cache"
+  },
+  "routes": [
+    {
+      "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "route": "/satellite/*",
+      "headers": {
+        "Cache-Control": "public, max-age=86400"
+      }
+    }
+  ]
+}

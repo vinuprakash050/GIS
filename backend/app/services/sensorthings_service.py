@@ -1,11 +1,17 @@
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 
 from app.schemas.sensorthings import (
     DatastreamResponse,
+    ObservationCreate,
     ObservationResponse,
     ThingResponse,
     UnitOfMeasurement,
 )
+
+# In-memory store for ingested observations keyed by datastream_id
+_ingested_observations: dict[int, list[ObservationResponse]] = {}
+_store_lock = Lock()
 
 
 class SensorThingsService:
@@ -57,10 +63,32 @@ class SensorThingsService:
         else:
             sensor_kind = "vibration"
         # Generate 24 hourly observations for time-series data
-        return [
+        generated = [
             self._build_observation(building_id, datastream_id, sensor_kind, hours_ago=i)
             for i in range(24)
         ]
+        # Prepend any ingested observations so they appear first (most recent)
+        with _store_lock:
+            ingested = list(_ingested_observations.get(datastream_id, []))
+        return ingested + generated
+
+    def ingest_observation(self, payload: ObservationCreate) -> ObservationResponse:
+        """
+        Store an incoming OGC SensorThings Observation in memory and return it
+        with an auto-generated @iot.id.
+        """
+        datastream_id = payload.Datastream.get("@iot.id", 0)
+        with _store_lock:
+            existing = _ingested_observations.setdefault(datastream_id, [])
+            new_id = 900000 + len(existing) + 1  # namespace ingested IDs away from generated ones
+            obs = ObservationResponse(**{
+                "@iot.id": new_id,
+                "phenomenonTime": payload.phenomenonTime,
+                "result": payload.result,
+                "Datastream": payload.Datastream,
+            })
+            existing.insert(0, obs)  # prepend so newest is first
+        return obs
 
     def _build_datastream(self, building_id: int, sensor_kind: str) -> DatastreamResponse:
         if sensor_kind == "temperature":

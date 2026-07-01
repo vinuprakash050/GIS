@@ -68,6 +68,7 @@ export function useMapInit({
         type: "raster",
         tiles: ["/satellite/{z}/{x}/{y}.png"],
         tileSize: 256,
+        attribution: "© ISRO Bhuvan | Cartosat-3",
       });
 
       map.addSource("building", {

@@ -1,11 +1,58 @@
-# GIS MVP — North Usman Road Building Explorer
+# 3D Urban Twin & Spatial Analytics Pipeline
+## North Usman Road, T. Nagar, Chennai
 
-A full-stack GIS application for exploring building footprints along North Usman Road (T. Nagar, Chennai). It visualises 2D/3D building data from PostGIS, provides a dynamic corridor-distance filter, and surfaces mock SensorThings-style environmental readings for each building.
+A full-stack GIS application built as a Senior Full-Stack Developer technical assignment. Implements a 3D Urban Digital Twin for North Usman Road using real ISRO Cartosat-3 satellite imagery, OpenStreetMap building footprints, volumetric analytics, and a live OGC SensorThings API backend for IoT sensor simulation.
 
-**Live deployment:**
-- Frontend → [gis-buildings.vercel.app](https://gis-buildings.vercel.app)
+**Live Deployments:**
+- Frontend → [brave-bush-0800de610.7.azurestaticapps.net](https://brave-bush-0800de610.7.azurestaticapps.net)
 - Backend API → [gis-jzq5.onrender.com/docs](https://gis-jzq5.onrender.com/docs)
 - Database → [Neon](https://neon.tech) (serverless PostgreSQL + PostGIS)
+
+---
+
+## Table of Contents
+
+1. [Architecture Overview](#architecture-overview)
+2. [Repository Layout](#repository-layout)
+3. [Tech Stack](#tech-stack)
+4. [Satellite Imagery Pipeline (ISRO Cartosat-3)](#satellite-imagery-pipeline-isro-cartosat-3)
+5. [Frontend](#frontend)
+6. [Backend](#backend)
+7. [OGC SensorThings API](#ogc-sensorthings-api)
+8. [Database](#database)
+9. [Environment Variables](#environment-variables)
+10. [Local Development Setup](#local-development-setup)
+11. [Azure Deployment](#azure-deployment)
+12. [Adding New Buildings from QGIS](#adding-new-buildings-from-qgis)
+13. [API Reference](#api-reference)
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│               Azure Static Web Apps                      │
+│  React + MapLibre GL JS + Chart.js  (Vite build)        │
+│  Satellite tiles served as static XYZ PNGs via CDN      │
+└────────────────────────┬────────────────────────────────┘
+                         │ HTTPS REST (CORS-secured)
+┌────────────────────────▼────────────────────────────────┐
+│             Render (FastAPI + Uvicorn)                   │
+│  Buildings REST API  │  OGC SensorThings API            │
+└────────────────────────┬────────────────────────────────┘
+                         │ SQLAlchemy + psycopg v3
+┌────────────────────────▼────────────────────────────────┐
+│           Neon Serverless PostgreSQL + PostGIS           │
+│  Tables: buildings, raw_buildings                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Data flow:**
+1. ISRO Cartosat-3 imagery obtained via ISRO Bhuvan (Level 5 free access), processed in QGIS, exported as GeoTIFF, converted to 8-bit, tiled into XYZ PNGs using `gdal2tiles.py`. Tiles committed to `public/satellite/` and served via Azure CDN.
+2. Building footprints sourced from OpenStreetMap, cross-referenced against Cartosat-3 imagery in QGIS, exported as a GeoPackage (`.gpkg`).
+3. On first backend startup, `ogr2ogr` imports the GeoPackage into `raw_buildings`, then a sync pipeline computes area, height, volume, and solar potential and writes to `buildings`. Subsequent startups skip this (builds table already populated).
+4. Frontend fetches buildings via corridor API, renders them as 3D extrusions in MapLibre, and fetches live sensor readings from OGC SensorThings endpoints when a building is selected.
 
 ---
 
@@ -13,259 +60,608 @@ A full-stack GIS application for exploring building footprints along North Usman
 
 ```
 .
-├── src/                     # React frontend
-│   ├── App.jsx              # Root component — map + sidebar + charts
-│   ├── main.jsx             # React entry point
-│   └── styles.css           # All styling (CSS variables, layout, responsive)
-├── index.html               # Vite HTML shell
-├── package.json             # Frontend dependencies & scripts
-├── vercel.json              # Vercel deployment config + SPA rewrite rules
-├── backend/                 # FastAPI backend
+├── src/                          # React frontend source
+│   ├── App.jsx                   # Root component — state, hooks, layout
+│   ├── main.jsx                  # React DOM entry point
+│   ├── styles.css                # All CSS (variables, layout, responsive)
+│   ├── config/
+│   │   └── map.js                # API base URL, map centre, chart options
+│   ├── hooks/
+│   │   ├── useMapInit.js         # MapLibre initialisation, layers, events
+│   │   ├── useBuildings.js       # Corridor API fetch, map source reload
+│   │   └── useSensorData.js      # SensorThings fetch with cancellation
+│   └── components/
+│       ├── MapPanel.jsx          # Map container + status bar + toggle buttons
+│       ├── MapTooltip.jsx        # Hover tooltip overlay
+│       ├── DetailsPanel.jsx      # Left sidebar — metrics + sensor readings
+│       └── SensorCharts.jsx      # Chart.js time-series charts
+├── index.html                    # Vite HTML shell
+├── package.json                  # Frontend deps & scripts
+├── staticwebapp.config.json      # Azure Static Web Apps routing + cache config
+├── public/
+│   └── satellite/                # XYZ PNG tiles generated by gdal2tiles
+│       ├── 13/ … 19/             # Zoom levels 13–19
+│       ├── leaflet.html          # GDAL2Tiles reference viewer
+│       ├── openlayers.html       # GDAL2Tiles reference viewer
+│       └── googlemaps.html       # GDAL2Tiles reference viewer
+├── backend/
 │   ├── app/
-│   │   ├── main.py          # App factory, CORS middleware, router registration
+│   │   ├── main.py               # App factory, CORS, startup sequence
 │   │   ├── api/
-│   │   │   ├── buildings.py       # /buildings REST endpoints
-│   │   │   └── sensorthings.py    # /v1.0/* SensorThings-style endpoints
+│   │   │   ├── buildings.py      # GET /buildings, GET /buildings/corridor
+│   │   │   └── sensorthings.py   # OGC /v1.0/* endpoints (GET + POST)
 │   │   ├── core/
-│   │   │   ├── config.py          # Settings via env vars (Pydantic model)
-│   │   │   ├── database.py        # SQLAlchemy engine + session factory
-│   │   │   ├── migrations.py      # Runs Alembic migrations on startup
-│   │   │   └── sync.py            # Syncs raw_buildings → buildings on startup
+│   │   │   ├── config.py         # Settings (Pydantic) from env vars
+│   │   │   ├── database.py       # SQLAlchemy engine + session factory
+│   │   │   ├── migrations.py     # Runs Alembic on startup
+│   │   │   └── sync.py           # raw_buildings → buildings sync
 │   │   ├── models/
-│   │   │   ├── base.py            # SQLAlchemy declarative base
-│   │   │   └── building.py        # Building ORM model (PostGIS geometry)
+│   │   │   └── building.py       # Building ORM model (PostGIS geometry)
 │   │   ├── repositories/
-│   │   │   └── building_repository.py  # DB queries (all / corridor filter)
+│   │   │   └── building_repository.py  # ST_DWithin corridor query
 │   │   ├── schemas/
-│   │   │   ├── building.py        # Pydantic GeoJSON output schemas
-│   │   │   ├── sensor.py          # Sensor schemas
-│   │   │   └── sensorthings.py    # SensorThings response schemas
+│   │   │   ├── building.py       # GeoJSON output schemas (Pydantic)
+│   │   │   └── sensorthings.py   # SensorThings schemas + ObservationCreate
 │   │   └── services/
-│   │       ├── building_service.py      # Business logic, derived metrics
-│   │       └── sensorthings_service.py  # Mock sensor data generation
+│   │       ├── building_service.py       # Volume + solar potential computation
+│   │       └── sensorthings_service.py   # Mock sensor generation + ingestion
 │   ├── alembic/
-│   │   ├── env.py                 # Alembic runtime config
-│   │   └── versions/
-│   │       ├── 20260629_0001_create_buildings_with_postgis.py  # Initial schema + seed
-│   │       └── 20260629_0002_seed_second_building.py           # Library Annex seed
-│   ├── alembic.ini            # Alembic config file
-│   ├── pyproject.toml         # Project metadata + pinned dependencies
-│   ├── requirements.txt       # Pip-installable dependency list
-│   └── run.py                 # Local dev entry point
-├── .env.example               # Environment variable reference (safe to commit)
-├── .env                       # Local secrets (gitignored)
-├── render.yaml                # Render service definition
-└── north_usman_buildings.geojson  # Source building data (QGIS export)
+│   │   └── versions/             # Migration files
+│   ├── Dockerfile                # Container build for Azure App Service
+│   ├── requirements.txt          # pip dependency list
+│   └── run.py                    # Local dev entry point
+├── northusman1.gpkg              # OGC GeoPackage — immutable geometric reference
+├── .env.example                  # Safe-to-commit env var reference
+├── .github/workflows/
+│   ├── azure-static-web-apps-brave-bush-0800de610.yml  # Frontend CI/CD
+│   └── dev_gis-backend.yml                             # Backend CI/CD
+└── README.md
 ```
 
 ---
 
-## Frontend
+## Tech Stack
 
-### Tech Stack
+### Frontend
 
 | Library | Version | Purpose |
 |---|---|---|
 | React | 19 | UI framework |
-| Vite | 7 | Build tool & dev server |
-| MapLibre GL JS | 5 | WebGL map rendering |
+| Vite | 7 | Build tool and dev server |
+| MapLibre GL JS | 5 | WebGL 2D/3D map rendering |
 | Chart.js + react-chartjs-2 | 4 / 5 | Time-series sensor charts |
 
-### Features
-
-**Interactive 3D Map**
-- OSM raster tile basemap via MapLibre GL
-- Buildings rendered as `fill-extrusion` layers — height driven by the `height` property from the API
-- Three layer stack per building: extrusion (3D), fill (2D footprint), outline
-- Hover state: building highlights orange and a tooltip appears showing name, area, height, volume, and solar potential
-- Click state: building turns orange-red, camera flies to it with `pitch: 55` for a 3D perspective view
-- Click on empty map: deselects building and resets camera to top-down view
-
-**Corridor Distance Filter**
-- Slider (50 m – 750 m, step 50 m) in the sidebar
-- API call fires only on `mouseup`/`touchend` to avoid hammering the server while dragging
-- A "searching…" animation indicates the pending state while the slider is mid-drag
-- On corridor change the map source data is replaced via `source.setData()` (no full map reinitialisation)
-
-**Building Details Sidebar**
-- Displays: ID, area (m²), height (m), volume (m³), solar potential (kWh/day)
-- Solar potential is computed server-side: `area × 5.5 kWh/m²/day × 0.20 efficiency`
-- Live sensor readings: temperature (°C), humidity (%), vibration (mm/s)
-
-**Sensor Time-Series Charts**
-- Three line charts: 24-hour temperature trend, humidity trend, structural vibration
-- Data fetched from the SensorThings-style API (`/v1.0/Things/{id}/Datastreams`)
-- Stale request cancellation via `ignore` flag in the `useEffect` cleanup
-
-**Responsive Layout**
-- Above 720 px: side-by-side sidebar + map
-- Below 720 px: stacked layout, map takes 72 vh, sidebar scrolls below
-
-### Environment Variables (Frontend)
-
-Set in Vercel project settings under **Environment Variables**:
-
-| Variable | Description | Example |
-|---|---|---|
-| `VITE_API_BASE_URL` | Backend API base URL | `https://gis-jzq5.onrender.com` |
-
-If the variable is absent the app falls back to `http://127.0.0.1:8000` for local development.
-
-### Local Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Start dev server (hot reload on http://localhost:5173)
-npm run dev
-
-# Production build
-npm run build
-
-# Preview production build locally
-npm run preview
-```
-
-### Deployment (Vercel)
-
-1. Push to your GitHub repo.
-2. Import the project in [Vercel](https://vercel.com/new).
-3. Set `VITE_API_BASE_URL` in project **Settings → Environment Variables**.
-4. Vercel auto-detects Vite and runs `npm run build` / outputs `dist/`.
-5. `vercel.json` adds a SPA rewrite rule (`/* → /index.html`) and aggressive asset caching headers.
-
----
-
-## Backend
-
-### Tech Stack
+### Backend
 
 | Library | Version | Purpose |
 |---|---|---|
-| FastAPI | 0.116 | Web framework |
-| SQLAlchemy | 2.0 | ORM + query builder |
+| FastAPI | 0.116 | ASGI web framework |
+| SQLAlchemy | 2.0 | ORM and query builder |
 | GeoAlchemy2 | 0.17 | PostGIS geometry type support |
 | Alembic | 1.16 | Database migrations |
 | Pydantic | 2.11 | Request/response validation |
 | psycopg (v3) | 3.2 | PostgreSQL driver |
 | uvicorn | 0.35 | ASGI server |
 
-### Features
+### Infrastructure
 
-**Startup sequence** (`main.py`)
-1. Alembic migrations run automatically (`run_migrations()`)
-2. `sync_buildings_from_raw()` checks for a `raw_buildings` table — if present, it upserts all rows into the `buildings` table. This is how QGIS-exported data lands in the app.
+| Service | Purpose |
+|---|---|
+| Azure Static Web Apps | Frontend hosting + CDN for satellite tiles |
+| Render | Backend API hosting |
+| Neon | Serverless PostgreSQL + PostGIS |
+| GitHub Actions | CI/CD for frontend and backend |
 
-**Buildings API**
+---
+
+## Satellite Imagery Pipeline (ISRO Cartosat-3)
+
+The satellite imagery is sourced from **ISRO Bhuvan** (Level 5 free access) providing Cartosat-3 imagery at 0.25m PAN resolution. The workflow below converts that imagery into web-optimised XYZ tiles.
+
+### Prerequisites
+
+**Install QGIS (Ubuntu)**
+```bash
+sudo apt update
+sudo apt install qgis
+```
+
+**Install GDAL**
+```bash
+sudo apt install gdal-bin python3-gdal
+```
+
+**Verify GDAL**
+```bash
+gdalinfo --version
+gdal_translate --version
+gdal2tiles.py --version
+```
+
+### Step 1 — Obtain Imagery from ISRO Bhuvan
+
+1. Register at [bhuvan.nrsc.gov.in](https://bhuvan.nrsc.gov.in) and request Level 5 access.
+2. Open QGIS, install **QuickMapServices** plugin:
+   ```
+   Plugins → Manage and Install Plugins → Search "QuickMapServices" → Install
+   ```
+3. Get contributed services:
+   ```
+   Web → QuickMapServices → Settings → More Services → Get Contributed Pack
+   ```
+4. Add Bhuvan/Cartosat-3 layer or load the downloaded GeoTIFF:
+   ```
+   Layer → Add Layer → Add Raster Layer → Select your .tif
+   ```
+
+### Step 2 — Load Building Layer
+
+```
+Layer → Add Layer → Add Vector Layer → north_usman_buildings.geojson
+```
+Right-click the building layer → **Zoom to Layer** to set the export extent.
+
+### Step 3 — Export as GeoTIFF
+
+```
+Project → Import/Export → Export Map to GeoTIFF
+```
+- Extent: Current Layer Extent
+- Resolution: High
+- Output: `public/north_usman_satellite_rendered_.tif`
+
+### Step 4 — Convert to 8-bit RGB
+
+The exported TIFF may be 16-bit or float. Convert for web compatibility:
+
+```bash
+gdal_translate \
+  -scale \
+  -ot Byte \
+  public/north_usman_satellite_rendered_.tif \
+  public/north_usman_satellite_rendered_8bit.tif
+```
+
+`-scale` auto-scales pixel values to 0–255. Without it the output is black.
+
+**Verify:**
+```bash
+gdalinfo public/north_usman_satellite_rendered_8bit.tif
+```
+
+Look for `Type=Byte` and note the corner coordinates — you will need these for map bounds:
+```
+Upper Left  ( 80.2182500, 13.0601000)
+Lower Right ( 80.2512000, 13.0356000)
+```
+
+### Step 5 — Generate XYZ Tiles
+
+```bash
+# Remove old tiles
+rm -rf public/satellite
+
+# Generate tiles for zoom levels 13–19
+gdal2tiles.py \
+  --xyz \
+  -z 13-19 \
+  public/north_usman_satellite_rendered_8bit.tif \
+  public/satellite
+```
+
+`--xyz` — generates tiles in XYZ/slippy map convention (not TMS). Required for MapLibre.
+
+`-z 13-19` — zoom levels 13 (city block) through 19 (sub-metre detail matching Cartosat-3 0.25m PAN).
+
+Output:
+```
+public/satellite/
+├── 13/ 14/ 15/ 16/ 17/ 18/ 19/
+├── leaflet.html
+├── openlayers.html
+└── googlemaps.html
+```
+
+### Step 6 — Verify Tiles
+
+```bash
+# Count generated tiles
+find public/satellite -name "*.png" | wc -l
+
+# Check a specific tile renders correctly
+open http://localhost:5173/satellite/17/94752/60740.png
+```
+
+Open `public/satellite/leaflet.html` and enable the Layer toggle — imagery should align over OSM.
+
+### Debugging
+
+```bash
+# Full raster metadata
+gdalinfo public/north_usman_satellite_rendered_8bit.tif
+
+# Including pixel statistics
+gdalinfo -stats public/north_usman_satellite_rendered_8bit.tif
+
+# Quick visual check — convert to PNG
+gdal_translate -of PNG public/north_usman_satellite_rendered_8bit.tif preview.png
+
+# Regenerate from scratch
+rm -rf public/satellite
+gdal2tiles.py --xyz -z 13-19 public/north_usman_satellite_rendered_8bit.tif public/satellite
+```
+
+### How Tiles Are Served
+
+Vite copies everything in `public/` into `dist/` unchanged. Azure Static Web Apps serves them from CDN at:
+```
+https://brave-bush-0800de610.7.azurestaticapps.net/satellite/{z}/{x}/{y}.png
+```
+
+The MapLibre source uses `/satellite/{z}/{x}/{y}.png` (relative path) — works on both localhost and Azure without any config change.
+
+---
+
+## Frontend
+
+### Map Layer Stack (bottom to top)
+
+```
+1. osm-raster-layer      ← OpenStreetMap tiles (basemap)
+2. satellite             ← ISRO Cartosat-3 XYZ tiles (toggleable)
+3. building-extrusion    ← 3D fill-extrusion (height from API)
+4. building-fill         ← 2D footprint (captures click/hover events)
+5. building-outline      ← Building border
+```
+
+The `fill` layer sits above `fill-extrusion` specifically to capture pointer events — extrusion layers don't receive clicks reliably in all MapLibre versions.
+
+### Building Selection (Raycasting)
+
+MapLibre's `queryRenderedFeatures()` performs WebGL-based ray intersection against rendered geometry:
+
+```javascript
+map.on("click", "building-fill", (e) => {
+  const feature = e.features?.[0];
+  map.setFeatureState({ source: "building", id: feature.id }, { selected: true });
+  map.flyTo({ pitch: 55, bearing: -18, zoom: 18, duration: 1000 });
+  // triggers useSensorData hook → fetches OGC observations
+});
+
+// Deselect on empty map click
+map.on("click", (e) => {
+  const hit = map.queryRenderedFeatures(e.point, { layers: ["building-fill"] });
+  if (hit.length === 0) {
+    map.setFeatureState({ source: "building", id: currentId }, { selected: false });
+    map.flyTo({ pitch: 0, bearing: 0, zoom: 17, duration: 800 });
+  }
+});
+```
+
+### Corridor Filter
+
+- Slider range: 50m – 1500m in 50m steps
+- `onChange` updates UI immediately (smooth slider)
+- `onMouseUp` / `onTouchEnd` fires the API call
+- Map source updated via `source.setData(newGeoJSON)` — no map reinitialisation
+
+### Sensor Data Cancellation
+
+```javascript
+let ignore = false;
+const load = async () => {
+  const data = await fetch(...);
+  if (ignore) return;  // stale — user clicked different building
+  setSensorData(data);
+};
+return () => { ignore = true; };  // cleanup runs when building changes
+```
+
+### Analytics Sidebar Metrics
+
+| Metric | Source | Calculation |
+|---|---|---|
+| Area | PostGIS `ST_Area(geom::geography)` | Accurate m² |
+| Height | OSM `building:levels × 3.0` or 9m default | metres |
+| Volume | `building_service.py` | `area × height` m³ |
+| Solar Potential | `building_service.py` | `area × 5.5 kWh/m²/day × 0.20` kWh/day |
+| Temperature | OGC SensorThings Observation | Simulated UHI °C |
+| Humidity | OGC SensorThings Observation | Simulated % RH |
+| Vibration | OGC SensorThings Observation | Simulated mm/s |
+
+---
+
+## Backend
+
+### Startup Sequence
+
+```
+1. Verify DB connection (SELECT 1)
+2. Run Alembic migrations (idempotent — creates tables if missing)
+3. Count rows in buildings table
+   ├── 0 rows (first boot):
+   │     a. ogr2ogr imports northusman1.gpkg → raw_buildings
+   │     b. sync_buildings_from_raw() computes metrics → buildings
+   └── > 0 rows: skip — data already loaded
+```
+
+This keeps cold starts fast on Azure App Service F1 free tier. The heavy GPKG import runs exactly once.
+
+### Buildings API
+
+**`GET /buildings`** — all buildings as GeoJSON FeatureCollection.
+
+**`GET /buildings/corridor?distance_meters=300`** — buildings within N metres of North Usman Road centre `(80.2341, 13.0526)`.
+
+Uses PostGIS `ST_DWithin` with `geography` cast for accurate metre-based distance:
+```sql
+WHERE ST_DWithin(
+    geometry::geography,
+    ST_GeographyFromText('SRID=4326;POINT(80.2341 13.0526)'),
+    300
+)
+```
+
+`::geography` cast is essential — without it PostGIS uses degree-based distance which is inaccurate near the equator.
+
+### Computed Properties per Building
+
+```json
+{
+  "area": 312.5,
+  "height": 9.0,
+  "volume": 2812.5,
+  "solar_potential": 344.0
+}
+```
+
+Solar potential formula: `area × 5.5 kWh/m²/day × 0.20` where:
+- `5.5` = Chennai average solar irradiance
+- `0.20` = standard photovoltaic panel efficiency (20%)
+
+---
+
+## OGC SensorThings API
+
+Implements a subset of [OGC SensorThings API Part 1: Sensing](https://www.ogc.org/standard/sensorthings/).
+
+### Entity Mapping
+
+| OGC Entity | This App |
+|---|---|
+| Thing | Individual building on North Usman Road |
+| Datastream | Sensor channel (temperature / humidity / vibration) |
+| Observation | Time-stamped sensor reading |
+
+### Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/buildings` | All buildings as a GeoJSON FeatureCollection |
-| `GET` | `/buildings/corridor?distance_meters=300` | Buildings within N metres of North Usman Road centre point (80.2341, 13.0526) |
+| `GET` | `/v1.0/Things` | All buildings as Things |
+| `GET` | `/v1.0/Things/{id}` | Single Thing with Datastreams |
+| `GET` | `/v1.0/Things/{id}/Datastreams` | Three datastreams per building |
+| `GET` | `/v1.0/Datastreams/{id}/Observations` | 24-hour observation history |
+| `POST` | `/v1.0/Observations` | Ingest a new Observation |
 
-The corridor query uses `ST_DWithin` with a `geography` cast for accurate metre-based distance (as opposed to degree-based geometry distance).
+### POST /v1.0/Observations — Ingestion Example
 
-Each feature includes computed properties:
-- `volume` = `area × height`
-- `solar_potential` = `area × 5.5 × 0.20` (Chennai irradiance × panel efficiency)
+```python
+import requests, json
+from datetime import datetime
 
-**SensorThings API** (mock data, OGC SensorThings 1.0-compatible paths)
+ST_API = "https://gis-jzq5.onrender.com/v1.0/Observations"
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1.0/Things` | All buildings as SensorThings Things |
-| `GET` | `/v1.0/Things/{id}` | Single Thing with its Datastreams |
-| `GET` | `/v1.0/Things/{id}/Datastreams` | Three datastreams: temperature, humidity, vibration |
-| `GET` | `/v1.0/Datastreams/{id}/Observations` | 24 hourly observations for a datastream |
+def ingest_sensor_data(datastream_id: int, value: float) -> int:
+    payload = {
+        "phenomenonTime": datetime.utcnow().isoformat() + "Z",
+        "result": value,
+        "Datastream": {"@iot.id": datastream_id}
+    }
+    r = requests.post(ST_API, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+    return r.status_code  # 201 Created
 
-Sensor values are deterministically generated from `building_id` and `hours_ago` — the same building always returns the same baseline reading, with realistic time-of-day variation layered on top.
-
-**Database Model**
-
+# Datastream ID convention:
+# building_id * 10 + 1 = temperature
+# building_id * 10 + 2 = humidity
+# building_id * 10 + 3 = vibration
+ingest_sensor_data(datastream_id=51, value=34.2)  # Building 5, temperature
 ```
-buildings
-├── id         INTEGER  PRIMARY KEY
-├── name       VARCHAR(255)
-├── area       DOUBLE PRECISION  (m²)
-├── height     DOUBLE PRECISION  (m)
-└── geometry   geometry(POLYGON, 4326)  — PostGIS, SRID 4326, spatial index
+
+Ingested observations are stored in-memory (thread-safe), appear first in GET responses, and persist for the server process lifetime.
+
+### Datastream ID Convention
+
+For building ID `N`:
+- Temperature stream: `N * 10 + 1`
+- Humidity stream: `N * 10 + 2`
+- Vibration stream: `N * 10 + 3`
+
+### Units of Measurement (QUDT)
+
+| Sensor | Symbol | QUDT URI |
+|---|---|---|
+| Temperature | degC | `https://qudt.org/vocab/unit/DEG_C` |
+| Humidity | % | `https://qudt.org/vocab/unit/PERCENT` |
+| Vibration | mm/s | `https://qudt.org/vocab/unit/MilliM-PER-SEC` |
+
+---
+
+## Database
+
+### Schema
+
+```sql
+CREATE TABLE buildings (
+    id       INTEGER PRIMARY KEY,
+    name     VARCHAR(255) NOT NULL,
+    area     DOUBLE PRECISION NOT NULL,  -- m²
+    height   DOUBLE PRECISION NOT NULL,  -- metres
+    geometry geometry(POLYGON, 4326)     -- PostGIS SRID 4326, spatial index
+);
+
+-- Populated by ogr2ogr from northusman1.gpkg
+CREATE TABLE raw_buildings (
+    fid              INTEGER,
+    name             VARCHAR,
+    "building:levels" VARCHAR,
+    geom             geometry
+);
 ```
 
-### Environment Variables (Backend)
-
-Copy `.env.example` to `.env` for local dev. On Render, set these in the **Environment** tab.
-
-| Variable | Description | Example |
-|---|---|---|
-| `DATABASE_URL` | Full Neon/Postgres connection string | `postgresql://user:pass@host/db?sslmode=require` |
-| `CORS_ORIGINS` | Comma-separated allowed origins | `https://your-app.vercel.app,http://localhost:5173` |
-
-Individual `DATABASE_HOST/PORT/NAME/USER/PASSWORD` vars are also supported but `DATABASE_URL` takes precedence.
-
-### Local Setup
-
-**Prerequisites:** Python 3.10+, a running PostgreSQL instance with PostGIS extension available, and [uv](https://docs.astral.sh/uv/) (recommended) or pip.
+### Alembic Migrations
 
 ```bash
 cd backend
 
-# Create virtual environment and install dependencies
-uv venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-uv pip install -r requirements.txt
+# Apply all pending migrations (runs automatically on startup too)
+alembic upgrade head
 
-# Copy env file and fill in your local DB credentials
+# Create a new migration after changing a model
+alembic revision --autogenerate -m "describe your change"
+
+# View history
+alembic history
+
+# Rollback one step
+alembic downgrade -1
+```
+
+---
+
+## Environment Variables
+
+### Backend (set in Render Environment tab or `backend/.env`)
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | Full PostgreSQL connection string | `postgresql://user:pass@host/db?sslmode=require` |
+| `CORS_ORIGINS` | ✅ prod | Comma-separated allowed origins | `https://your-app.azurestaticapps.net,http://localhost:5173` |
+| `GPKG_PATH` | optional | Path to GeoPackage file | `northusman1.gpkg` |
+
+### Frontend (set in Azure Static Web Apps → Configuration → Application settings)
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `VITE_API_BASE_URL` | ✅ prod | Backend base URL (no trailing slash) | `https://gis-jzq5.onrender.com` |
+
+Falls back to `http://127.0.0.1:8000` when not set (local dev).
+
+---
+
+## Local Development Setup
+
+### Prerequisites
+
+- Node.js 20+
+- Python 3.12+
+- PostgreSQL with PostGIS (or free [Neon](https://neon.tech) account)
+- GDAL: `sudo apt install gdal-bin`
+
+### Frontend
+
+```bash
+# Install dependencies
+npm install
+
+# Start dev server — hot reload at http://localhost:5173
+npm run dev
+
+# Production build → dist/
+npm run build
+
+# Preview production build locally
+npm run preview
+```
+
+### Backend
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
 cp ../.env.example ../.env
-# Edit .env — set DATABASE_URL or the individual DATABASE_* vars
+# Edit .env — set DATABASE_URL to your PostgreSQL connection string
 
-# Start the server (migrations run automatically on startup)
+# Start server — migrations + data sync run automatically on startup
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+- API: `http://localhost:8000`
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-### Deployment (Render)
+---
 
-`render.yaml` in the repo root defines the service. Manual steps:
+## Azure Deployment
 
-1. Connect your GitHub repo to [Render](https://render.com).
-2. Render detects `render.yaml` and creates the `gis-mvp-api` web service.
-3. In the service's **Environment** tab add:
-   - `DATABASE_URL` — your Neon connection string
-   - `CORS_ORIGINS` — your Vercel frontend URL (+ localhost for local dev)
-4. Render runs `pip install -r requirements.txt` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+### Frontend — Azure Static Web Apps
+
+Deployment is automated via GitHub Actions (`.github/workflows/azure-static-web-apps-brave-bush-0800de610.yml`).
+
+On every push to `dev`:
+1. Vite builds the frontend (`npm run build`) → outputs `dist/`
+2. `public/satellite/` tiles are copied into `dist/` automatically by Vite
+3. Azure deploys `dist/` to CDN edge nodes globally
+
+`staticwebapp.config.json` handles:
+- SPA fallback: all routes → `/index.html` (except static files)
+- Cache: `immutable` for hashed Vite assets, 24h for satellite tiles
+
+**Set backend URL:**
+```
+Azure Portal → GIS-building → Configuration → Application settings
+VITE_API_BASE_URL = https://gis-jzq5.onrender.com
+```
+Then push any commit to `dev` to trigger a rebuild with the new variable.
+
+### Backend — Render
+
+1. Connect GitHub repo to [Render](https://render.com) → New Web Service
+2. Build command: `pip install -r requirements.txt`
+3. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+4. Root directory: `backend`
+5. Add environment variables in Render dashboard:
+   - `DATABASE_URL` = your Neon connection string
+   - `CORS_ORIGINS` = `https://brave-bush-0800de610.7.azurestaticapps.net,http://localhost:5173`
+
+### Backend — Azure App Service (alternative)
+
+Deployment via `.github/workflows/dev_gis-backend.yml` (auto-generated by Azure Deployment Center).
+
+Set startup command in Azure Portal → GIS-backend → Configuration → General settings:
+```
+cd /home/site/wwwroot && uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Add environment variables in Azure Portal → GIS-backend → Environment variables:
+```
+DATABASE_URL = postgresql://...
+CORS_ORIGINS = https://brave-bush-0800de610.7.azurestaticapps.net,http://localhost:5173
+```
 
 ---
 
 ## Adding New Buildings from QGIS
 
-This is the recommended workflow for loading real building footprint data into the database.
+### 1. Prepare layer in QGIS
 
-### 1. Prepare your layer in QGIS
-
-Open your GeoPackage (`.gpkg`) or shapefile in QGIS. Make sure the layer:
-- Uses **EPSG:4326** (WGS 84) as its CRS. If not, reproject: **Layer → Save As → CRS → EPSG:4326**
-- Has a polygon geometry type
+Ensure the layer:
+- Uses **EPSG:4326** (WGS 84). Reproject if needed: `Layer → Save As → CRS → EPSG:4326`
+- Has polygon geometry
 - Has a unique integer `fid` field (QGIS creates this automatically for GeoPackages)
 
-Optional but helpful attributes that the sync picks up automatically:
-- `name` — building name; falls back to `"Building {fid}"` if blank
-- `building:levels` — number of floors; used to calculate height as `levels × 3.0 m`; defaults to `9.0 m` if absent
+Optional attributes the sync picks up:
+- `name` — building name; defaults to `"Building {fid}"` if blank
+- `building:levels` — floor count; used as `levels × 3.0 m` height; defaults to 9m
 
-### 2. Export to PostGIS (raw_buildings table)
-
-In QGIS go to **Database → DB Manager → PostGIS**, connect to your Neon database, then:
-
-**Option A — DB Manager import**
-1. Open **Table → Import Layer/File**
-2. Select your QGIS layer as the source
-3. Set **Schema** to `public`, **Table** to `raw_buildings`
-4. Check **Create spatial index**
-5. Set **Source CRS** to EPSG:4326
-6. Click **OK**
-
-**Option B — ogr2ogr (command line)**
+### 2. Export to PostGIS via ogr2ogr
 
 ```bash
 ogr2ogr \
@@ -274,67 +670,57 @@ ogr2ogr \
   your_file.gpkg \
   -nln raw_buildings \
   -t_srs EPSG:4326 \
+  -nlt PROMOTE_TO_MULTI \
   -overwrite
 ```
 
-Replace connection details with your Neon values. For a `.geojson` file just swap `your_file.gpkg` for `your_file.geojson`.
+### 3. Trigger sync
 
-### 3. Trigger the sync
-
-The backend syncs `raw_buildings → buildings` **automatically on every startup**. So after loading data:
-
+The sync runs automatically on next startup:
 ```bash
-# Local: restart the uvicorn server
+# Local
 uvicorn app.main:app --reload
 
-# Render: trigger a manual deploy or restart the service from the dashboard
+# Render — trigger manual deploy from dashboard
 ```
-
-The sync SQL (`backend/app/core/sync.py`) does the following:
-1. Detects the geometry column name from PostGIS's `geometry_columns` view
-2. Clears the `buildings` table
-3. Upserts every row from `raw_buildings`, computing:
-   - `area` via `ST_Area(geom::geography)` — accurate m² regardless of CRS
-   - `height` from `building:levels` × 3 m (falls back to 9 m)
-   - `name` from the `name` column (falls back to `"Building {fid}"`)
 
 ### 4. Verify
 
 ```sql
--- Connect to your Neon database and run:
-SELECT id, name, area, height, ST_AsText(geometry) FROM buildings LIMIT 5;
+SELECT id, name, area, height FROM buildings LIMIT 10;
 ```
 
-Or hit the API directly:
+Or via API:
 ```
-GET https://your-api.onrender.com/buildings
+GET https://gis-jzq5.onrender.com/buildings/corridor?distance_meters=500
 ```
 
 ### Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| `raw_buildings table not found` in logs | The `raw_buildings` table wasn't created — re-run the QGIS export |
-| All buildings show height `9.0 m` | Your layer has no `building:levels` attribute — add it in QGIS or edit the default in `sync.py` |
-| Buildings don't appear on the map | Check that their geometry falls within `distance_meters` of `(80.2341, 13.0526)` — increase the corridor slider |
-| `geometry_columns` returns no result | Run `SELECT UpdateGeometrySRID('raw_buildings', 'geom', 4326);` manually in your DB |
+| `raw_buildings table not found` | Re-run the ogr2ogr export |
+| All buildings show height `9.0 m` | Add `building:levels` attribute in QGIS |
+| Buildings missing from map | They may be outside the corridor — increase slider |
+| `geometry_columns` returns nothing | Run `SELECT UpdateGeometrySRID('raw_buildings', 'geom', 4326);` |
 
 ---
 
 ## API Reference
 
-Base URL (production): `https://gis-jzq5.onrender.com`  
+Base URL (production): `https://gis-jzq5.onrender.com`
 Base URL (local): `http://localhost:8000`
 
 ```
-GET /                                              → health check
-GET /buildings                                     → all buildings (GeoJSON)
-GET /buildings/corridor?distance_meters=300        → corridor-filtered buildings (GeoJSON)
-GET /v1.0/Things                                   → all Things
-GET /v1.0/Things/{id}                              → single Thing
-GET /v1.0/Things/{id}/Datastreams                  → datastreams for a building
-GET /v1.0/Datastreams/{id}/Observations            → 24h observations for a datastream
+GET  /                                               Health check
+GET  /buildings                                      All buildings (GeoJSON)
+GET  /buildings/corridor?distance_meters=300         Corridor-filtered buildings (GeoJSON)
+GET  /v1.0/Things                                    All Things
+GET  /v1.0/Things/{id}                               Single Thing
+GET  /v1.0/Things/{id}/Datastreams                   Datastreams for a building
+GET  /v1.0/Datastreams/{id}/Observations             24h observations for a datastream
+POST /v1.0/Observations                              Ingest a new observation
 ```
 
-Interactive docs (Swagger UI): [gis-jzq5.onrender.com/docs](https://gis-jzq5.onrender.com/docs)  
+Interactive docs (Swagger UI): [gis-jzq5.onrender.com/docs](https://gis-jzq5.onrender.com/docs)
 ReDoc: [gis-jzq5.onrender.com/redoc](https://gis-jzq5.onrender.com/redoc)

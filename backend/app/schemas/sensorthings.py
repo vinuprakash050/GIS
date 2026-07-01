@@ -7,6 +7,13 @@ class UnitOfMeasurement(BaseModel):
     definition: str
 
 
+class ObservationCreate(BaseModel):
+    """Request body for POST /v1.0/Observations (OGC SensorThings ingestion)."""
+    phenomenonTime: str
+    result: float
+    Datastream: dict[str, int]  # {"@iot.id": <datastream_id>}
+
+
 class ObservationResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
