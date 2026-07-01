@@ -67,17 +67,17 @@ export default function SensorCharts({ timeSeriesData }) {
   return (
     <>
       <SensorLine
-        title="24-Hour Temperature Trend"
+        title="Temperature · 24h"
         observations={timeSeriesData.temperature}
         color="rgba(255, 99, 132, 1)"
       />
       <SensorLine
-        title="24-Hour Humidity Trend"
+        title="Humidity · 24h"
         observations={timeSeriesData.humidity}
         color="rgba(99, 179, 237, 1)"
       />
       <SensorLine
-        title="24-Hour Structural Vibration"
+        title="Vibration · 24h"
         observations={timeSeriesData.vibration}
         color="rgba(154, 230, 180, 1)"
       />

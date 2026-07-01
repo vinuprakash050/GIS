@@ -15,6 +15,7 @@ export default function App() {
   const [buildingDetails, setBuildingDetails] = useState({});
   const [corridorDistance, setCorridorDistance] = useState(300);
   const [debouncedCorridorDistance, setDebouncedCorridorDistance] = useState(300);
+  const [corridorLoading, setCorridorLoading] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   const [is3D, setIs3D] = useState(false);
   const [satelliteEnabled, setSatelliteEnabled] = useState(true);
@@ -57,9 +58,10 @@ export default function App() {
     setSelectedBuildingId,
     setBuildingDetails,
     setStatus,
+    setCorridorLoading,
   });
 
-  const { sensorData, timeSeriesData, sensorStatus } = useSensorData(selectedBuildingId);
+  const { sensorData, timeSeriesData, sensorStatus, injecting, injectObservation } = useSensorData(selectedBuildingId);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleToggle3D = () => {
@@ -101,18 +103,7 @@ export default function App() {
         </p>
       </header>
 
-      <section className="map-layout">
-        <DetailsPanel
-          corridorDistance={corridorDistance}
-          isSliding={isSliding}
-          onCorridorChange={setCorridorDistance}
-          onCorridorCommit={setDebouncedCorridorDistance}
-          selectedBuilding={selectedBuilding}
-          sensorData={sensorData}
-          sensorStatus={sensorStatus}
-          timeSeriesData={timeSeriesData}
-        />
-
+      <section className="map-panel">
         <MapPanel
           mapContainerRef={mapContainerRef}
           status={status}
@@ -121,6 +112,22 @@ export default function App() {
           tooltip={tooltip}
           satelliteEnabled={satelliteEnabled}
           onToggleSatellite={handleSatelliteToggle}
+          corridorLoading={corridorLoading}
+          detailsPanel={
+            <DetailsPanel
+              corridorDistance={corridorDistance}
+              isSliding={isSliding}
+              corridorLoading={corridorLoading}
+              onCorridorChange={setCorridorDistance}
+              onCorridorCommit={setDebouncedCorridorDistance}
+              selectedBuilding={selectedBuilding}
+              sensorData={sensorData}
+              sensorStatus={sensorStatus}
+              timeSeriesData={timeSeriesData}
+              injecting={injecting}
+              onInject={injectObservation}
+            />
+          }
         />
       </section>
     </main>

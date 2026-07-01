@@ -9,17 +9,17 @@ export default function MapPanel({
   tooltip,
   satelliteEnabled,
   onToggleSatellite,
+  detailsPanel,
+  corridorLoading,
 }) {
   return (
-    <section className="map-panel">
+    <>
       <div className="map-panel-header">
         <div className="map-status">{status}</div>
 
         <div className="map-actions">
           <button
-            className={`layer-toggle-btn ${
-              satelliteEnabled ? "active" : ""
-            }`}
+            className={`layer-toggle-btn ${satelliteEnabled ? "active" : ""}`}
             onClick={onToggleSatellite}
           >
             {satelliteEnabled ? "🛰 Hide Satellite" : "🛰 Show Satellite"}
@@ -35,9 +35,19 @@ export default function MapPanel({
         </div>
       </div>
 
-      <div ref={mapContainerRef} className="map-container" />
+      <div className="map-layout">
+        {detailsPanel}
 
-      <MapTooltip tooltip={tooltip} />
-    </section>
+        <div className="map-container-wrapper">
+          <div ref={mapContainerRef} className="map-container" />
+          {corridorLoading && (
+            <div className="map-loading-overlay">
+              <div className="map-loading-fill" />
+            </div>
+          )}
+          <MapTooltip tooltip={tooltip} />
+        </div>
+      </div>
+    </>
   );
 }

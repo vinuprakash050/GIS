@@ -1,18 +1,28 @@
-import React from "react";
+import React, { useRef } from "react";
+
+const TOOLTIP_W = 220;
+const TOOLTIP_H = 140;
+
 /**
- * Hover tooltip that follows the cursor over buildings on the map.
- * Rendered absolutely inside the map panel.
+ * Hover tooltip rendered inside .map-container-wrapper (position: relative).
+ * x/y are pixel offsets from the top-left of the map canvas.
  */
 export default function MapTooltip({ tooltip }) {
+  const wrapperRef = useRef(null);
   if (!tooltip) return null;
 
   const { x, y, building } = tooltip;
 
+  // Get the wrapper dimensions for clamping; fall back to reasonable defaults
+  const rect = wrapperRef.current?.parentElement?.getBoundingClientRect();
+  const maxLeft = rect ? rect.width  - TOOLTIP_W - 16 : 9999;
+  const maxTop  = rect ? rect.height - TOOLTIP_H - 16 : 9999;
+
+  const left = Math.max(8, Math.min(x + 16, maxLeft));
+  const top  = Math.max(8, Math.min(y - 10,  maxTop));
+
   return (
-    <div
-      className="map-tooltip"
-      style={{ left: x + 16, top: y - 10 }}
-    >
+    <div ref={wrapperRef} className="map-tooltip" style={{ left, top }}>
       <p className="map-tooltip-name">{building.name}</p>
       <div className="map-tooltip-grid">
         <span className="map-tooltip-label">Area</span>

@@ -12,6 +12,7 @@ export function useBuildings({
   setSelectedBuildingId,
   setBuildingDetails,
   setStatus,
+  setCorridorLoading,
 }) {
   useEffect(() => {
     const map = mapRef.current;
@@ -19,6 +20,7 @@ export function useBuildings({
 
     const reload = async () => {
       try {
+        setCorridorLoading(true);
         setStatus(`Loading buildings within ${debouncedCorridorDistance}m corridor...`);
 
         const res = await fetch(
@@ -64,6 +66,8 @@ export function useBuildings({
         );
       } catch (err) {
         setStatus(`Could not reload corridor data: ${err.message}`);
+      } finally {
+        setCorridorLoading(false);
       }
     };
 
