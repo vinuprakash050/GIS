@@ -62,73 +62,103 @@ export function useMapInit({
           ]),
         );
 
-        setBuildingDetails(detailsById);
+      setBuildingDetails(detailsById);
+      // ── Sources ──────────────────────────────────────────────────────────
+      map.addSource("satellite", {
+        type: "raster",
+        tiles: ["/satellite/{z}/{x}/{y}.png"],
+        tileSize: 256,
+      });
 
-        // ── Sources ──────────────────────────────────────────────────────────
-        map.addSource("building", { type: "geojson", data: buildingData });
+      map.addSource("building", {
+        type: "geojson",
+        data: buildingData,
+      });
 
-        map.addSource("terrain-dem", {
-          type: "raster-dem",
-          tiles: ["https://demotiles.maplibre.org/terrain-tiles/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          maxzoom: 11,
-        });
+      map.addSource("terrain-dem", {
+        type: "raster-dem",
+        tiles: ["https://demotiles.maplibre.org/terrain-tiles/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        maxzoom: 11,
+      });
 
-        // ── Layers ───────────────────────────────────────────────────────────
-        map.addLayer({
-          id: "building-extrusion",
-          type: "fill-extrusion",
-          source: "building",
-          paint: {
-            "fill-extrusion-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false], "#ff6b35",
-              ["boolean", ["feature-state", "hover"],    false], "#ffaa8a",
-              "#6c757d",
-            ],
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": 0.9,
-          },
-        });
+      // ── Layers ───────────────────────────────────────────────────────────
 
-        map.addLayer({
-          id: "building-fill",
-          type: "fill",
-          source: "building",
-          paint: {
-            "fill-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false], "#ff6b35",
-              ["boolean", ["feature-state", "hover"],    false], "#ffaa8a",
-              "#adb5bd",
-            ],
-            "fill-opacity": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false], 0.5,
-              ["boolean", ["feature-state", "hover"],    false], 0.4,
-              0.3,
-            ],
-          },
-        });
+      // Satellite imagery (above OSM)
+      map.addLayer({
+        id: "satellite",
+        type: "raster",
+        source: "satellite",
+      });
 
-        map.addLayer({
-          id: "building-outline",
-          type: "line",
-          source: "building",
-          paint: {
-            "line-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false], "#e63946",
-              "#495057",
-            ],
-            "line-width": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false], 5,
-              2,
-            ],
-          },
-        });
+      // Buildings
+      map.addLayer({
+        id: "building-extrusion",
+        type: "fill-extrusion",
+        source: "building",
+        paint: {
+          "fill-extrusion-color": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false], "#ff6b35",
+            ["boolean", ["feature-state", "hover"], false], "#ffaa8a",
+            "#6c757d",
+          ],
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-base": 0,
+          "fill-extrusion-opacity": 0.9,
+        },
+      });
+
+      map.addLayer({
+        id: "building-fill",
+        type: "fill",
+        source: "building",
+        paint: {
+          "fill-color": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false], "#ff6b35",
+            ["boolean", ["feature-state", "hover"], false], "#ffaa8a",
+            "#adb5bd",
+          ],
+          "fill-opacity": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false], 0.5,
+            ["boolean", ["feature-state", "hover"], false], 0.4,
+            0.3,
+          ],
+        },
+      });
+
+      map.addLayer({
+        id: "building-outline",
+        type: "line",
+        source: "building",
+        paint: {
+          "line-color": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false], "#e63946",
+            "#495057",
+          ],
+          "line-width": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false], 5,
+            2,
+          ],
+        },
+      });
+
+      const bounds = [
+        [80.21825, 13.03560], // southwest
+        [80.25120, 13.06010], // northeast
+      ];
+      map.fitBounds(bounds, {
+        padding: 30,
+        duration: 0,
+      });
+
+      map.setMaxBounds(bounds);
+      // Debug
+      console.log(map.getStyle().layers.map(layer => layer.id));
 
         // ── Terrain ──────────────────────────────────────────────────────────
         // Raster DEM for 3D ground mesh. Chennai is flat — exaggeration 1.5

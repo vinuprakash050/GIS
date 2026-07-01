@@ -84,6 +84,36 @@ body,
   margin-bottom: 12px;
 }
 
+.map-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.layer-toggle-btn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(31, 122, 224, 0.25);
+  background: rgba(31, 122, 224, 0.08);
+  color: #184b86;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.layer-toggle-btn:hover {
+  background: rgba(31, 122, 224, 0.16);
+  border-color: rgba(31, 122, 224, 0.5);
+}
+
+.layer-toggle-btn.active {
+  background: rgba(31, 122, 224, 0.18);
+  border-color: #1f7ae0;
+}
+
 .map-panel-header .map-status {
   flex: 1;
   margin: 0;

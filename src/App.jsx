@@ -17,7 +17,7 @@ export default function App() {
   const [debouncedCorridorDistance, setDebouncedCorridorDistance] = useState(300);
   const [tooltip, setTooltip] = useState(null);
   const [is3D, setIs3D] = useState(false);
-
+  const [satelliteEnabled, setSatelliteEnabled] = useState(true);
   // ── Refs shared with map callbacks ──────────────────────────────────────────
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -75,6 +75,19 @@ export default function App() {
     );
   };
 
+  const handleSatelliteToggle = () => {
+    if (!mapRef.current) return;
+
+    const visibility = satelliteEnabled ? "none" : "visible";
+
+    mapRef.current.setLayoutProperty(
+      "satellite",
+      "visibility",
+      visibility
+    );
+
+    setSatelliteEnabled(!satelliteEnabled);
+  };
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <main className="app-shell">
@@ -106,6 +119,8 @@ export default function App() {
           is3D={is3D}
           onToggle3D={handleToggle3D}
           tooltip={tooltip}
+          satelliteEnabled={satelliteEnabled}
+          onToggleSatellite={handleSatelliteToggle}
         />
       </section>
     </main>
