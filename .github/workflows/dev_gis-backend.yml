@@ -59,9 +59,12 @@ jobs:
         run: |
           echo "Current directory:"
           pwd
-          echo ""
-          echo "Downloaded files:"
-          ls -R
+          echo "================================="
+          echo "Top level:"
+          ls -la
+          echo "================================="
+          echo "Recursive listing:"
+          find .
 
       - name: Login to Azure
         uses: azure/login@v2
